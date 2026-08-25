@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Ergebnisse einer echten Auswertung gehoeren nicht ins Repository.
+Auswertung/
+Eingang/
+messages.csv
+Mein_Report.html
+Team_Report*.json
+team_export*.json
+mapping_personen.*
+mapping_domains.*
+config.json

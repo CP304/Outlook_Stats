@@ -94,14 +94,14 @@ Postfächern, Rohdaten oder Cache-Dateien. Es ist gleichgültig, ob die Dateien 
 Ordner oder von einem USB-Stick kommen:
 
 ```
-merge_starten.bat   →  Ordner mit den eingegangenen Dateien wählen  →  Team_Report.html
+Merge_starten.bat   →  Ordner mit den eingegangenen Dateien wählen  →  Gruppenkennzahlen
 ```
 
 Verhalten:
 - **Abbruch bei weniger als 5 Dateien**, mit Klartexthinweis statt Teilergebnis
 - Zellensperre bei k < 5 zugrunde liegenden Vorgängen → "n. a."
 - keine Auflistung der Einzelbeiträge, keine Min-/Max-Werte, keine Spannweiten
-- Ausgabe: Median und Quartile der Gruppe, Verteilungen, Anteile — ein einziger HTML-Report
+- Ausgabe: Median und Quartile der Gruppe (`Team_Report.json`), keine Einzelwerte
 
 ## Inhalt von `team_export.json` — vollständig und abschließend
 

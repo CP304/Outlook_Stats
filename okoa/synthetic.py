@@ -1,0 +1,133 @@
+"""Synthetische Testdaten.
+
+Erzeugt ein Postfach mit bekannten Eigenschaften, damit sich die gesamte
+Auswertung ohne Outlook und ohne echte Daten pruefen laesst.  Die Verteilungen
+sind so gewaehlt, dass sie den in der Praxis erwarteten Effekt enthalten:
+interne Vorgaenge sind laenger als externe.
+"""
+
+from __future__ import annotations
+
+import random
+from datetime import datetime, timedelta
+
+from .model import (
+    AUTOMATISIERT, EXTERN, INTERN, NORMAL, RICHTUNG_EMPFANGEN,
+    RICHTUNG_GESENDET, TERMIN, Nachricht,
+)
+
+
+INTERNE = [f"person{i}@firma.de" for i in range(1, 13)]
+EXTERNE_DOMAINS = [f"lieferant{i}.com" for i in range(1, 9)] + ["dienstleister.de", "kunde.at"]
+ICH = "ich@firma.de"
+
+
+def postfach_erzeugen(
+    n_vorgaenge: int = 300,
+    anteil_intern: float = 0.55,
+    anteil_gemischt: float = 0.20,
+    seed: int = 42,
+    ende: datetime | None = None,
+) -> list[Nachricht]:
+    zufall = random.Random(seed)
+    ende = ende or datetime(2026, 6, 30, 17, 0)
+    beginn = ende - timedelta(days=365)
+    nachrichten: list[Nachricht] = []
+    laufend = 0
+
+    for vorgang_nr in range(n_vorgaenge):
+        wuerfel = zufall.random()
+        if wuerfel < anteil_intern:
+            art = "intern"
+        elif wuerfel < anteil_intern + anteil_gemischt:
+            art = "gemischt"
+        else:
+            art = "extern"
+
+        # Interne Vorgaenge brauchen mehr Runden -- genau der Effekt, den die
+        # Analyse sichtbar machen soll.
+        laenge = (zufall.randint(2, 12) if art == "intern"
+                  else zufall.randint(2, 8) if art == "gemischt"
+                  else zufall.randint(1, 4))
+
+        start = beginn + timedelta(seconds=zufall.randint(0, int((ende - beginn).total_seconds())))
+        conv = f"CONV{vorgang_nr:05d}"
+        betreff_hash = f"HASH{vorgang_nr:05d}"
+        interne_partner = zufall.sample(INTERNE, zufall.randint(1, 4))
+        extern_adresse = f"kontakt@{zufall.choice(EXTERNE_DOMAINS)}"
+
+        zeitpunkt = start
+        for runde in range(laenge):
+            zeitpunkt += timedelta(hours=zufall.randint(1, 30))
+            if zeitpunkt > ende:
+                break
+            rein_intern = art == "intern" or (art == "gemischt" and zufall.random() < 0.55)
+            empfaenger = list(interne_partner)
+            klassen = [INTERN] * len(empfaenger)
+            if not rein_intern:
+                empfaenger.append(extern_adresse)
+                klassen.append(EXTERN)
+
+            gesendet = zufall.random() < 0.5
+            if gesendet:
+                absender, absender_klasse = ICH, INTERN
+            elif rein_intern:
+                absender, absender_klasse = zufall.choice(interne_partner), INTERN
+                empfaenger = [ICH] + [e for e in empfaenger if e != absender]
+                klassen = [INTERN] * len(empfaenger)
+            else:
+                absender, absender_klasse = extern_adresse, EXTERN
+                empfaenger = [ICH] + interne_partner
+                klassen = [INTERN] * len(empfaenger)
+
+            n_cc = zufall.randint(0, 2) if rein_intern else 0
+            n_to = max(1, len(empfaenger) - n_cc)
+            laufend += 1
+            nachrichten.append(Nachricht(
+                msg_hash=f"mid:{laufend}@firma.de",
+                zeitstempel=zeitpunkt,
+                richtung=RICHTUNG_GESENDET if gesendet else RICHTUNG_EMPFANGEN,
+                absender_id=absender,
+                absender_klasse=absender_klasse,
+                absender_domain=absender.split("@")[1],
+                empfaenger_ids=empfaenger,
+                empfaenger_klassen=klassen,
+                n_to=n_to,
+                n_cc=n_cc,
+                n_to_intern=sum(1 for k in klassen[:n_to] if k == INTERN),
+                n_to_extern=sum(1 for k in klassen[:n_to] if k == EXTERN),
+                n_cc_intern=sum(1 for k in klassen[n_to:] if k == INTERN),
+                n_cc_extern=sum(1 for k in klassen[n_to:] if k == EXTERN),
+                klasse=NORMAL,
+                hat_anhang=zufall.random() < 0.3,
+                ist_antwort=runde > 0,
+                ordner="Posteingang" if not gesendet else "Gesendete Elemente",
+                store="Postfach",
+                conversation_id=conv,
+                betreff_hash=betreff_hash,
+            ))
+
+    # Maschinenverkehr und Termine -- sie duerfen die Kern-KPIs nicht verfaelschen.
+    for i in range(60):
+        laufend += 1
+        zeitpunkt = beginn + timedelta(seconds=zufall.randint(0, int((ende - beginn).total_seconds())))
+        automat = i % 2 == 0
+        nachrichten.append(Nachricht(
+            msg_hash=f"mid:auto{laufend}@firma.de",
+            zeitstempel=zeitpunkt,
+            richtung=RICHTUNG_EMPFANGEN,
+            absender_id="noreply@firma.de" if automat else "kollege@firma.de",
+            absender_klasse=INTERN,
+            absender_domain="firma.de",
+            empfaenger_ids=[ICH],
+            empfaenger_klassen=[INTERN],
+            n_to=1,
+            klasse=AUTOMATISIERT if automat else TERMIN,
+            ordner="Posteingang",
+            store="Postfach",
+            conversation_id=f"AUTO{i}",
+            betreff_hash=f"AUTOHASH{i}",
+        ))
+
+    nachrichten.sort(key=lambda n: n.zeitstempel)
+    return nachrichten

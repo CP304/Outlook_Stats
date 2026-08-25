@@ -1,0 +1,18 @@
+# Outlook-Kommunikationsanalyse -- Abhaengigkeiten
+# Installation:  pip install -r requirements.txt
+
+# --- Pflicht -------------------------------------------------------------
+# Keine.  Die gesamte Auswertung, der HTML-Report und die Zusammenfuehrung
+# laufen mit der Standardbibliothek von Python 3.11 oder neuer.
+
+# --- Windows/Outlook -----------------------------------------------------
+# Nur fuer das Auslesen des Postfachs noetig.  Ohne pywin32 laeuft alles
+# Uebrige unveraendert -- die Auswertung rechnet dann auf der bereits
+# erzeugten Zwischendatei ('okoa neu') oder auf Beispieldaten ('okoa demo').
+pywin32>=306; sys_platform == "win32"
+
+# --- Optional ------------------------------------------------------------
+# Erzeugt die Zuordnungsdateien als .xlsx statt .csv, mit Auswahllisten und
+# fixierter Kopfzeile.  Ohne openpyxl werden .csv-Dateien geschrieben, die
+# sich ebenso in Excel oeffnen und pflegen lassen.
+openpyxl>=3.1

@@ -20,7 +20,7 @@ Ergebnis:
 - vollständiger Basisreport (alle Kern-KPIs, intern/extern/gemischt, Zeitverlauf, Domainkonzentration)
 - `mapping_personen.xlsx` — automatisch erzeugt, **nach Volumen absteigend sortiert**
 - `mapping_domains.xlsx` — dito
-- `messages.parquet` — der lokale Metadaten-Cache
+- `messages.csv` — der lokale Metadaten-Cache
 
 `mapping_personen.xlsx`:
 
@@ -90,18 +90,21 @@ plattformunabhängig, testbar und ohne Postfachzugriff nachvollziehbar. Das hat 
 
 ## Der Metadaten-Cache
 
-`messages.parquet` (bzw. CSV), eine Zeile je deduplizierter Nachricht:
+`messages.csv`, eine Zeile je deduplizierter Nachricht. Bewusst ein Textformat: Wer prüfen
+soll, dass keine Inhalte gespeichert werden, muss die Datei ohne Werkzeug öffnen können.
 
 ```
-msg_hash, thread_id_conv, thread_id_fallback, richtung, zeitstempel,
-absender_id, absender_klasse, absender_domain_id,
+msg_hash, zeitstempel, richtung, absender_id, absender_klasse, absender_domain,
+empfaenger_ids, empfaenger_klassen,
 n_to, n_cc, n_to_intern, n_to_extern, n_cc_intern, n_cc_extern, n_verteilerlisten,
-empfaenger_ids (Liste), klasse (normal|automatisiert|termin|unaufgeloest),
-hat_anhang, ordner_typ, ist_antwort
+klasse (normal|automatisiert|termin), hat_anhang, ist_antwort, ordner, store,
+thread_id_conv, thread_id_fallback
 ```
 
-**Nicht enthalten:** Betreff, Body, Anhangnamen, BCC-Details, Roh-EntryIDs.
-Der Betreff existiert nur als flüchtiger Hash während der Thread-Bildung und wird nicht persistiert.
+**Nicht enthalten:** Betreff, Body, Anhangnamen, BCC-Details, Roh-EntryIDs, ConversationID.
+Der Betreff existiert nur als flüchtiger Hash während der Vorgangsbildung und wird nicht gespeichert;
+deshalb stehen die fertigen Vorgangs-IDs in der Datei, und ein erneuter Lauf übernimmt sie unverändert,
+statt die Vorgänge zu zerlegen.
 
 Optionaler Schalter `--pseudonymisiert`: Adressen werden durch einen gesalzenen Hash ersetzt,
 das Salz bleibt lokal. Für Prüfungen durch Dritte gedacht.
