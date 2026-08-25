@@ -1,7 +1,7 @@
 # 09 — Teilnahme-Workflow für Kollegen
 
-Wie Kollegen die Analyse **selbst** ausführen und ihre Kennzahlen **wirklich anonym** beisteuern können,
-wenn sie möchten. Grundlage: Kapitel 08.
+Wie Kollegen die Analyse **selbst** ausführen und ihre Kennzahlen beisteuern können, wenn sie möchten.
+Der Weg ist bewusst so gehalten, dass er ohne IT-Projekt funktioniert. Grundlage: Kapitel 08.
 
 ## Verteilung — kein Setup beim Teilnehmer
 
@@ -41,46 +41,57 @@ Er zeigt den **vollständigen Inhalt von `team_export.json` im Klartext** an, mi
 Die zweite Schaltfläche ist bewusst nicht kleiner, nicht grau und nicht versteckt. Wer eine echte
 Freiwilligkeit behauptet, muss sie auch gestalten.
 
-## Anonyme Rückgabe — drei Wege, in dieser Reihenfolge
+## Rückgabe — der einfache Weg zuerst
 
-### Weg 1 — Write-only-Ablageordner *(empfohlen)*
+Der Übermittlungsweg kostet **keinen Entwicklungsaufwand**: Die Exportdatei ist in jedem Fall dieselbe,
+klein und im Klartext lesbar. Was der Weg verändert, ist nicht der Aufwand, sondern der Grad der Anonymität.
+Deshalb hier ehrlich sortiert nach dem, was man dafür bekommt.
 
-Ein Ordner auf einem Netzlaufwerk, auf dem die Gruppe das Recht **"Dateien erstellen / Daten schreiben"**
-hat, aber **nicht** "Ordnerinhalt auflisten" und nicht "Lesen". Das ist mit Standard-NTFS-Rechten
-abbildbar und muss von der IT einmalig eingerichtet werden.
+### Standard — jeder schickt, was er will
 
-Wirkung:
-- Jeder legt seine Datei unter einer Zufalls-ID ab.
-- Niemand sieht, **wer** abgelegt hat — auch die Führungskraft nicht.
-- Teilnehmer sehen die Dateien der anderen nicht.
-- **Nichtteilnahme bleibt unsichtbar.** Das ist der Punkt, der Freiwilligkeit überhaupt erst echt macht,
-  und der Hauptgrund, warum dieser Weg den anderen vorzuziehen ist.
+Wer teilnehmen möchte, führt das Programm aus und schickt die `team_export.json` per Mail — oder legt sie
+in einen Teamordner, oder gibt sie gar nicht ab. Kein Share, keine IT-Anfrage, keine Vorbereitung.
 
-Zu beachten und offen anzusprechen: Das Dateisystem speichert einen **Besitzer** je Datei. Wer
-Administratorrechte auf dem Share hat, könnte ihn auslesen. Deshalb: Die Führungskraft erhält
-bewusst **keine** Adminrechte auf diesem Ordner, und die IT wird gebeten, das zu bestätigen.
-Wer es strenger braucht, lässt den Ordner von der IT oder dem Betriebsrat verwalten und nur den
-fertigen Dateistapel übergeben.
+Das funktioniert sofort und ist für einen ersten Durchlauf völlig ausreichend. Zwei Dinge sind dabei
+aber sauber zu benennen, statt sie zu übergehen:
 
-### Weg 2 — neutraler Sammler
+- Der **Inhalt** ist aggregiert und enthält keine Namen, Adressen, Betreffe oder Uhrzeiten
+  (vollständige Liste unten). Insofern ist die Datei harmlos.
+- Der **Absender** ist bei einer Mail sichtbar. Das Ergebnis ist damit korrekt als **pseudonym**
+  zu bezeichnen, nicht als anonym: Du weißt, von wem welche Kennzahlen stammen — auch wenn du
+  gar nicht hinsehen willst. Und du siehst, wer nicht geschickt hat.
 
-Eine dritte Person — Assistenz, Datenschutzbeauftragte(r) oder ein Betriebsratsmitglied — nimmt die
-Dateien per Mail entgegen, trennt sie von den Absendern und übergibt nur den Stapel.
-Organisatorische statt technischer Lösung; funktioniert zuverlässig, wenn Weg 1 an der IT scheitert,
-und hat den Nebeneffekt zusätzlichen Vertrauens durch die Beteiligung des Betriebsrats.
+Der zweite Punkt ist der eigentliche: Freiwilligkeit gegenüber der eigenen Führungskraft ist nur dann
+echt, wenn Nichtteilnahme unsichtbar bleibt. Das ist keine juristische Feinheit, sondern der Grund,
+warum Leute mitmachen oder eben nicht.
 
-### Weg 3 — direkte Mail an die Führungskraft *(schlechteste Option)*
+### Wenn es ohne Zusatzaufwand besser gehen soll
 
-Der Dateiinhalt ist anonym, der Absender jedoch nicht. Damit ist die Zuordnung wiederhergestellt und
-der Schutz weitgehend aufgehoben — ebenso die Unsichtbarkeit der Nichtteilnahme.
+Zwei Varianten, die beide **null Programmieraufwand** bedeuten und den Absender trotzdem verdecken —
+wähle die, die in deiner Umgebung leichter zu bekommen ist:
 
-Nur akzeptabel, wenn alle Beteiligten das ausdrücklich so wollen. In diesem Fall ist das Ergebnis
-korrekt als **pseudonym** zu bezeichnen, nicht als anonym.
+- **Neutraler Sammler.** Eine dritte Person — Assistenz, Datenschutzbeauftragte(r), Betriebsratsmitglied —
+  nimmt die Mails entgegen und gibt dir nur den Dateistapel weiter. Rein organisatorisch, in fünf Minuten
+  vereinbart, und die Beteiligung des Betriebsrats zahlt nebenbei auf die Akzeptanz ein.
+- **Write-only-Ordner.** Ein Netzlaufwerk-Ordner mit dem Recht „Dateien erstellen", aber ohne
+  „Ordnerinhalt auflisten" und ohne „Lesen". Standard-NTFS, eine einmalige Bitte an die IT.
+  Jeder legt unter einer Zufalls-ID ab; niemand sieht, wer abgelegt hat, auch du nicht.
+  *(Zu beachten: Das Dateisystem speichert einen Besitzer je Datei — du solltest auf diesem Ordner
+  bewusst keine Adminrechte haben.)*
+
+Beides ist optional. Wenn es hakt, nimm den Standardweg und nenne das Ergebnis pseudonym.
+
+### Was unabhängig vom Weg gilt
+
+Die Zusammenführung verweigert unter 5 Teilnehmern die Auswertung und unterdrückt zu kleine Kategorien
+(siehe unten). Das ist im Programm fest verdrahtet und hängt nicht daran, wie die Dateien zu dir kommen.
+Damit bleibt auch der bequemste Weg auswertbar, ohne einzelne Personen sichtbar zu machen.
 
 ## Zusammenführung bei der Führungskraft
 
 Ein eigenes Kommando, das ausschließlich `team_export.json`-Dateien einliest — ohne jeden Zugang zu
-Postfächern, Rohdaten oder Cache-Dateien:
+Postfächern, Rohdaten oder Cache-Dateien. Es ist gleichgültig, ob die Dateien per Mail, aus einem
+Ordner oder von einem USB-Stick kommen:
 
 ```
 merge_starten.bat   →  Ordner mit den eingegangenen Dateien wählen  →  Team_Report.html
@@ -114,6 +125,10 @@ Tagesdaten, Postfach- oder Rechnername, Benutzer-ID, Ordnernamen, Einzelvorgäng
 
 ## Und weiterhin gilt
 
-Dieser Weg ersetzt die Einbindung von Datenschutzbeauftragtem und Betriebsrat nicht. Er macht sie
-**zustimmungsfähig** — weil nachweisbar ist, dass bei der Führungskraft keine personenbezogenen
-Daten ankommen können.
+Auch der bequemste Weg ersetzt die Einbindung von Datenschutzbeauftragtem und Betriebsrat nicht —
+freiwillig oder nicht, es bleibt eine Auswertung von Beschäftigtenkommunikation. Was dieses Konzept
+leistet, ist, die Zustimmung **erreichbar** zu machen: Der geteilte Datensatz ist aggregiert,
+vollständig dokumentiert, vom Teilnehmer vorab einsehbar und enthält nichts, was auf eine einzelne
+Person zurückführt. Das ist ein kurzes Gespräch statt einer Betriebsvereinbarung.
+
+Und der Einstieg bleibt ohnehin **dein eigenes Postfach** — dafür brauchst du niemanden zu fragen.
