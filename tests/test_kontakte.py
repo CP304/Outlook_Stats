@@ -73,6 +73,62 @@ def test_konsens_ist_reproduzierbar():
     assert konsens(kandidaten) == konsens(list(reversed(kandidaten)))
 
 
+def test_funktion_aus_signatur():
+    from okoa.signaturen import funktion_kandidat
+
+    assert funktion_kandidat(SIGNATUR) == "Leiterin Vertrieb"
+
+
+def test_firmenzeile_ist_keine_funktion():
+    from okoa.signaturen import funktion_kandidat
+
+    assert funktion_kandidat("Gruß\nAnna\nMuster Werkzeugbau GmbH & Co. KG\n") is None
+
+
+def test_ohne_rollenwort_keine_funktion():
+    from okoa.signaturen import funktion_kandidat
+
+    assert funktion_kandidat("Viele Grüße\nAnna Schmidt\nMusterstadt\n") is None
+
+
+@pytest.mark.parametrize("zeile,fest,mobil", [
+    ("Tel. +49 123 4567-0 | Mobil 0170 1234567", "+49 123 4567-0", "0170 1234567"),
+    ("T: 089/123456-12", "089 123456-12", None),
+    ("Telefon: 0221 9876543", "0221 9876543", None),
+    ("Handy: 0151 22334455", None, "0151 22334455"),
+])
+def test_rufnummern_werden_erkannt(zeile, fest, mobil):
+    from okoa.signaturen import telefon_kandidaten
+
+    assert telefon_kandidaten(zeile) == (fest, mobil)
+
+
+@pytest.mark.parametrize("zeile", [
+    "Fax: +49 123 4567-99",
+    "Telefax 0221 9876500",
+    "F: 089/123456-99",
+])
+def test_faxnummern_landen_nie_im_telefonfeld(zeile):
+    """Eine Faxnummer im Telefonfeld ist schlimmer als ein leeres Feld."""
+    from okoa.signaturen import telefon_kandidaten
+
+    assert telefon_kandidaten(zeile) == (None, None)
+
+
+def test_unbeschriftete_ziffern_werden_ignoriert():
+    """Könnte eine Kunden-, Auftrags- oder Registernummer sein."""
+    from okoa.signaturen import telefon_kandidaten
+
+    assert telefon_kandidaten("Kundennummer 4711 0815 1234") == (None, None)
+
+
+def test_durchwahl_bleibt_erhalten():
+    from okoa.signaturen import telefon_kandidaten
+
+    fest, _ = telefon_kandidaten("Tel. 089/123456-12")
+    assert fest.endswith("-12")
+
+
 def test_domainname_ist_nur_lesehilfe():
     assert aus_domain("muster-werkzeugbau.de") == "Muster Werkzeugbau"
     assert aus_domain("") == ""
@@ -117,7 +173,7 @@ def test_signatur_schlaegt_domain(vorgaenge):
     zeile = kontakte.als_zeilen(kontakte.sammeln(vorgaenge, belege))[0]
     assert zeile["Unternehmen"] == "Muster GmbH"
     assert zeile["Herkunft Unternehmen"] == kontakte.HERKUNFT_SIGNATUR
-    assert zeile["Belege"] == 2
+    assert zeile["Belege Unternehmen"] == 2
 
 
 def test_firma_gilt_fuer_die_ganze_domain(vorgaenge):
@@ -168,6 +224,64 @@ def test_csv_schreibt_zeitstempel_aus(vorgaenge, tmp_path):
     text = ziel.read_text(encoding="utf-8-sig")
     assert "datetime.datetime" not in text
     assert ":" in text.splitlines()[1]
+
+
+def test_funktion_und_rufnummern_aus_der_signatur(vorgaenge):
+    liste = kontakte.sammeln(vorgaenge)
+    adresse = liste[0].adresse
+    beleg = kontakte.Beleg(adresse, "Anna Schmidt", "Muster GmbH",
+                           "Leiterin Vertrieb", "+49 123 4567-0", "0170 1234567")
+    zeile = kontakte.als_zeilen(kontakte.sammeln(vorgaenge, {adresse: [beleg] * 2}))[0]
+    assert zeile["Funktion"] == "Leiterin Vertrieb"
+    assert zeile["Telefon"] == "+49 123 4567-0"
+    assert zeile["Mobil"] == "0170 1234567"
+    assert zeile["Signaturbelege"] == 2
+
+
+def test_funktion_gilt_nur_fuer_die_person(vorgaenge):
+    """Anders als die Firmierung wird eine Funktion nicht auf die Domain vererbt."""
+    liste = kontakte.sammeln(vorgaenge)
+    domain = liste[0].domain
+    liste[0].funktion_kandidaten = ["Leiter Einkauf"] * 2
+    partner = kontakte.Kontakt(adresse=f"zweiter@{domain}", domain=domain)
+    liste.append(partner)
+    zeilen = {z["E-Mail"]: z for z in kontakte.als_zeilen(liste)}
+    assert zeilen[partner.adresse]["Funktion"] == ""
+
+
+def test_einzelner_beleg_reicht_nicht(vorgaenge):
+    liste = kontakte.sammeln(vorgaenge)
+    adresse = liste[0].adresse
+    beleg = kontakte.Beleg(adresse, funktion_kandidat="Leiter Einkauf",
+                           telefon_kandidat="+49 123 4567-0")
+    zeile = kontakte.als_zeilen(kontakte.sammeln(vorgaenge, {adresse: [beleg]}))[0]
+    assert zeile["Funktion"] == ""
+    assert zeile["Telefon"] == ""
+
+
+def test_widersprechende_rufnummern_bleiben_leer(vorgaenge):
+    """Zwei gleich häufige Nummern -- ein Münzwurf wäre nicht reproduzierbar."""
+    liste = kontakte.sammeln(vorgaenge)
+    adresse = liste[0].adresse
+    belege = [kontakte.Beleg(adresse, telefon_kandidat="0221 111111")] * 2
+    belege += [kontakte.Beleg(adresse, telefon_kandidat="0221 222222")] * 2
+    zeile = kontakte.als_zeilen(kontakte.sammeln(vorgaenge, {adresse: belege}))[0]
+    assert zeile["Telefon"] == ""
+
+
+def test_rufnummern_stehen_als_text_in_excel(vorgaenge, tmp_path):
+    """Sonst frisst Excel die führende Null der Vorwahl."""
+    openpyxl = pytest.importorskip("openpyxl")
+    liste = kontakte.sammeln(vorgaenge)
+    adresse = liste[0].adresse
+    beleg = kontakte.Beleg(adresse, telefon_kandidat="0221 9876543")
+    zeilen = kontakte.als_zeilen(kontakte.sammeln(vorgaenge, {adresse: [beleg] * 2}))
+    ziel = kontakte.schreiben(zeilen, tmp_path / "Externe_Kontakte.xlsx")
+    blatt = openpyxl.load_workbook(ziel).active
+    spalte = kontakte.SPALTEN.index("Telefon") + 1
+    zelle = blatt.cell(row=2, column=spalte)
+    assert zelle.value == "0221 9876543"
+    assert zelle.number_format == "@"
 
 
 def test_tage_seit_kontakt_nie_negativ(vorgaenge):

@@ -116,6 +116,131 @@ def konsens(kandidaten: list[str]) -> tuple[str | None, int]:
     return name, anzahl
 
 
+# --------------------------------------------------------------- Funktion
+
+# Rollenwoerter, die eine Funktionszeile belegen.  Wie bei den Rechtsformen
+# gilt: lieber ein leeres Feld als eine geratene Funktion.
+ROLLENWOERTER = [
+    r"leiter(?:in)?", r"leitung", r"geschäftsführ\w*", r"geschaeftsführ\w*",
+    r"prokurist(?:in)?", r"vorstand", r"inhaber(?:in)?", r"gesellschafter(?:in)?",
+    r"einkauf\w*", r"vertrieb\w*", r"verkauf\w*", r"disponent(?:in)?",
+    r"sachbearbeiter(?:in)?", r"referent(?:in)?", r"assistenz", r"assistent(?:in)?",
+    r"projektleiter(?:in)?", r"projektmanager(?:in)?", r"ingenieur(?:in)?",
+    r"techniker(?:in)?", r"meister(?:in)?", r"konstrukteur(?:in)?",
+    r"qualitätsmanag\w*", r"berater(?:in)?", r"consultant", r"controller(?:in)?",
+    r"buchhalt\w*", r"personal\w*", r"produktmanager(?:in)?",
+    r"key\s?account\s?manager(?:in)?", r"account\s?manager(?:in)?",
+    r"sales\s?manager(?:in)?", r"head\s+of\s+[\w\s]+", r"director",
+    r"manager(?:in)?", r"managing\s+director", r"CEO", r"CTO", r"CFO", r"COO",
+    r"teamleiter(?:in)?", r"bereichsleiter(?:in)?", r"abteilungsleiter(?:in)?",
+    r"niederlassungsleiter(?:in)?", r"werkleiter(?:in)?", r"betriebsleiter(?:in)?",
+]
+ROLLEN_MUSTER = re.compile(r"(?<![\w])(?:" + "|".join(ROLLENWOERTER) + r")(?![\w])",
+                           re.IGNORECASE)
+MAX_LAENGE_FUNKTION = 60
+
+
+def funktion_kandidat(text: str | None) -> str | None:
+    """Sucht die Funktionszeile einer Signatur.
+
+    Eine Zeile zaehlt, wenn sie ein Rollenwort enthaelt und weder Rechtsform
+    noch Kontaktdaten -- 'Leiter Einkauf' ja, 'Muster GmbH' und
+    'Tel. 0123 / Leitung' nein.
+    """
+    if not text:
+        return None
+    zeilen = [z for z in (_bereinigen(z) for z in text.splitlines()) if z]
+    if not zeilen:
+        return None
+
+    for zeile in reversed(zeilen[-ZEILEN_AM_ENDE:]):
+        if not (3 <= len(zeile) <= MAX_LAENGE_FUNKTION):
+            continue
+        if RECHTSTEXT.search(zeile) or STOERZEILEN.search(zeile):
+            continue
+        # Eine Firmenzeile ist keine Funktionszeile.
+        if RECHTSFORM_MUSTER.search(zeile):
+            continue
+        if TELEFON_MUSTER.search(zeile):
+            continue
+        if not ROLLEN_MUSTER.search(zeile):
+            continue
+        buchstaben = sum(1 for z in zeile if z.isalpha())
+        if buchstaben < len(zeile) * 0.6:
+            continue
+        return zeile
+    return None
+
+
+# --------------------------------------------------------------- Telefon
+
+TELEFON_MUSTER = re.compile(r"(?:\+|00)\d[\d\s/().\-]{6,}\d|\b0\d[\d\s/().\-]{5,}\d")
+
+# Nur beschriftete Nummern werden uebernommen.  Eine unbeschriftete Ziffernfolge
+# koennte eine Kundennummer, eine PLZ-Kombination oder eine Registernummer sein.
+# Die Etiketten werden im Textstueck unmittelbar VOR der Nummer gesucht --
+# deshalb am Ende verankert und nicht mit einem Lookahead.
+LABEL_FESTNETZ = re.compile(
+    r"(?:^|[\s|•·(])(?:tel(?:efon)?|phone|fon|festnetz|durchwahl|dw|office|t)"
+    r"\s*[.:]?\s*$", re.IGNORECASE)
+LABEL_MOBIL = re.compile(
+    r"(?:^|[\s|•·(])(?:mobil(?:e)?|handy|cell(?:ular)?|m)\s*[.:]?\s*$",
+    re.IGNORECASE)
+# Fax wird ausdruecklich nie uebernommen -- eine Faxnummer im Telefonfeld ist
+# schlimmer als ein leeres Feld.
+LABEL_FAX = re.compile(r"(?:^|[\s|•·(])(?:fax|telefax|f)\s*[.:]?\s*$", re.IGNORECASE)
+
+
+def _nummer_normalisieren(roh: str) -> str:
+    """Vereinheitlicht die Schreibweise, ohne die Nummer zu veraendern."""
+    # Der Bindestrich bleibt: er trennt in deutschen Nummern die Durchwahl und
+    # ist damit eine Information, keine Formatierung.
+    text = re.sub(r"[^\d+\-]", " ", roh)
+    text = re.sub(r"\s+", " ", text).strip(" -")
+    if not text:
+        return ""
+    ziffern = text.replace("+", "").strip(" -")
+    return ("+" + ziffern) if roh.strip().startswith("+") else ziffern
+
+
+def _nummern_aus_zeile(zeile: str) -> list[tuple[str, str]]:
+    """Ergibt Paare (art, nummer) fuer eine Zeile -- 'fest', 'mobil' oder 'fax'."""
+    treffer = []
+    for fund in TELEFON_MUSTER.finditer(zeile):
+        vorspann = zeile[:fund.start()]
+        # Nur das direkt vorangehende Etikett zaehlt, nicht eines vom Zeilenanfang.
+        rest = vorspann[-14:]
+        if LABEL_FAX.search(rest):
+            art = "fax"
+        elif LABEL_MOBIL.search(rest):
+            art = "mobil"
+        elif LABEL_FESTNETZ.search(rest):
+            art = "fest"
+        else:
+            continue
+        nummer = _nummer_normalisieren(fund.group())
+        if len(nummer.replace("+", "")) >= 7:
+            treffer.append((art, nummer))
+    return treffer
+
+
+def telefon_kandidaten(text: str | None) -> tuple[str | None, str | None]:
+    """Ergibt (Festnetz, Mobil) aus einer Signatur.  Fax wird verworfen."""
+    if not text:
+        return None, None
+    fest = mobil = None
+    zeilen = [z for z in (_bereinigen(z) for z in text.splitlines()) if z]
+    for zeile in reversed(zeilen[-ZEILEN_AM_ENDE:]):
+        if RECHTSTEXT.search(zeile):
+            continue
+        for art, nummer in _nummern_aus_zeile(zeile):
+            if art == "fest" and fest is None:
+                fest = nummer
+            elif art == "mobil" and mobil is None:
+                mobil = nummer
+    return fest, mobil
+
+
 def aus_domain(domain: str) -> str:
     """Notbehelf, wenn keine Signatur vorliegt: der Domainname selbst.
 

@@ -23,7 +23,7 @@ from .normalize import (
     adresse_klassifizieren, adresse_normalisieren, betreff_hashen,
     duplikat_schluessel, ist_antwort_betreff, ist_x500, nachricht_klassifizieren,
 )
-from .signaturen import firma_kandidat
+from .signaturen import firma_kandidat, funktion_kandidat, telefon_kandidaten
 
 
 # MAPI-Eigenschaften, die ueber den PropertyAccessor erreichbar sind.
@@ -159,7 +159,10 @@ def _signaturteil(item) -> str:
 
 def _kontaktbelege(item, nachricht: Nachricht, mit_signaturen: bool) -> list[Beleg]:
     """Anzeigenamen und -- optional -- den Firmenkandidaten je externem Kontakt."""
-    kandidat = firma_kandidat(_signaturteil(item)) if mit_signaturen else None
+    text = _signaturteil(item) if mit_signaturen else ""
+    firma = firma_kandidat(text) if text else None
+    funktion = funktion_kandidat(text) if text else None
+    telefon, mobil = telefon_kandidaten(text) if text else (None, None)
     belege = []
 
     if nachricht.absender_klasse == "extern":
@@ -167,7 +170,11 @@ def _kontaktbelege(item, nachricht: Nachricht, mit_signaturen: bool) -> list[Bel
             adresse=nachricht.absender_id,
             anzeigename=str(_eigenschaft(item, "SenderName", "")),
             # Die Signatur gehoert dem Absender -- nur ihm wird sie zugerechnet.
-            firma_kandidat=kandidat,
+            # Fuer Empfaenger waere sie schlicht falsch.
+            firma_kandidat=firma,
+            funktion_kandidat=funktion,
+            telefon_kandidat=telefon,
+            mobil_kandidat=mobil,
         ))
 
     # Die Empfaengerliste der Nachricht entsteht in _empfaenger_lesen in genau

@@ -30,8 +30,9 @@ HERKUNFT_DOMAIN = "Domainname"
 HERKUNFT_KEINE = ""
 
 SPALTEN = [
-    "E-Mail", "Anzeigename", "Domain", "Unternehmen", "Herkunft Unternehmen",
-    "Belege", "Kategorie", "Nachrichten", "gesendet", "empfangen", "Vorgänge",
+    "E-Mail", "Anzeigename", "Funktion", "Telefon", "Mobil",
+    "Domain", "Unternehmen", "Herkunft Unternehmen", "Belege Unternehmen",
+    "Signaturbelege", "Kategorie", "Nachrichten", "gesendet", "empfangen", "Vorgänge",
     "Erstkontakt", "Letzter Kontakt", "Letzte eigene Nachricht",
     "Letzte Nachricht von dort", "Tage seit letztem Kontakt", "Status",
 ]
@@ -46,13 +47,25 @@ ZEITFORMAT = "DD.MM.YYYY HH:MM"
 INAKTIV_AB_TAGEN = 180
 
 
+# Spalten, die als Text erzwungen werden -- sonst frisst Excel die fuehrende
+# Null einer Vorwahl und macht aus '0170 1234567' eine Zahl.
+TEXTSPALTEN = ["Telefon", "Mobil"]
+
+
 @dataclass
 class Beleg:
-    """Was die Extraktion je Nachricht ueber einen Kontakt gesehen hat."""
+    """Was die Extraktion je Nachricht ueber einen Kontakt gesehen hat.
+
+    Firma gilt fuer das ganze Haus, Funktion und Rufnummern gelten nur fuer
+    diese eine Person -- deshalb werden sie getrennt zusammengefasst.
+    """
 
     adresse: str
     anzeigename: str = ""
     firma_kandidat: str | None = None
+    funktion_kandidat: str | None = None
+    telefon_kandidat: str | None = None
+    mobil_kandidat: str | None = None
 
 
 @dataclass
@@ -61,6 +74,10 @@ class Kontakt:
     domain: str
     anzeigenamen: Counter = field(default_factory=Counter)
     firma_kandidaten: list[str] = field(default_factory=list)
+    funktion_kandidaten: list[str] = field(default_factory=list)
+    telefon_kandidaten: list[str] = field(default_factory=list)
+    mobil_kandidaten: list[str] = field(default_factory=list)
+    signaturen_gesehen: int = 0
     nachrichten: int = 0
     gesendet: int = 0
     empfangen: int = 0
@@ -128,6 +145,15 @@ def sammeln(vorgaenge: list[Vorgang], belege: dict[str, list[Beleg]] | None = No
                 kontakt.anzeigenamen[beleg.anzeigename.strip()] += 1
             if beleg.firma_kandidat:
                 kontakt.firma_kandidaten.append(beleg.firma_kandidat)
+            if beleg.funktion_kandidat:
+                kontakt.funktion_kandidaten.append(beleg.funktion_kandidat)
+            if beleg.telefon_kandidat:
+                kontakt.telefon_kandidaten.append(beleg.telefon_kandidat)
+            if beleg.mobil_kandidat:
+                kontakt.mobil_kandidaten.append(beleg.mobil_kandidat)
+            if any((beleg.firma_kandidat, beleg.funktion_kandidat,
+                    beleg.telefon_kandidat, beleg.mobil_kandidat)):
+                kontakt.signaturen_gesehen += 1
 
     return sorted(kontakte.values(), key=lambda k: (-k.nachrichten, k.adresse))
 
@@ -161,15 +187,25 @@ def als_zeilen(kontakte: list[Kontakt], kategorien: dict[str, str] | None = None
             belege = 0
         # Nie negativ: ein Kontakt von heute Nachmittag liegt sonst "-1 Tage"
         # zurueck, was in der Tabelle wie ein Fehler aussieht.
+        # Funktion und Rufnummern gelten nur fuer diese eine Person -- der
+        # Konsens laeuft deshalb je Adresse, nicht je Domain.
+        funktion, _ = konsens(kontakt.funktion_kandidaten)
+        telefon, _ = konsens(kontakt.telefon_kandidaten)
+        mobil, _ = konsens(kontakt.mobil_kandidaten)
+
         tage = (max(0, (stichtag - kontakt.letzter_kontakt).days)
                 if kontakt.letzter_kontakt else None)
         zeilen.append({
             "E-Mail": kontakt.adresse,
             "Anzeigename": kontakt.anzeigename(),
+            "Funktion": funktion or "",
+            "Telefon": telefon or "",
+            "Mobil": mobil or "",
             "Domain": kontakt.domain,
             "Unternehmen": unternehmen,
             "Herkunft Unternehmen": herkunft,
-            "Belege": belege,
+            "Belege Unternehmen": belege,
+            "Signaturbelege": kontakt.signaturen_gesehen,
             "Kategorie": kategorien.get(kontakt.domain, ""),
             "Nachrichten": kontakt.nachrichten,
             "gesendet": kontakt.gesendet,
@@ -219,8 +255,17 @@ def _verschoenern(pfad: Path, anzahl: int) -> None:
     blatt = mappe.active
     blatt.auto_filter.ref = f"A1:{blatt.cell(row=1, column=len(SPALTEN)).column_letter}" \
                             f"{anzahl + 1}"
-    for spalte, breite in (("A", 38), ("B", 26), ("C", 26), ("D", 36), ("E", 20)):
-        blatt.column_dimensions[spalte].width = breite
+    for name, breite in (("E-Mail", 38), ("Anzeigename", 24), ("Funktion", 30),
+                         ("Telefon", 20), ("Mobil", 20), ("Domain", 24),
+                         ("Unternehmen", 34), ("Herkunft Unternehmen", 20)):
+        index = SPALTEN.index(name) + 1
+        blatt.column_dimensions[blatt.cell(row=1, column=index).column_letter].width = breite
+
+    # Rufnummern als Text, sonst verschwindet die fuehrende Null der Vorwahl.
+    for name in TEXTSPALTEN:
+        index = SPALTEN.index(name) + 1
+        for zeile in range(2, anzahl + 2):
+            blatt.cell(row=zeile, column=index).number_format = "@"
 
     for name in ZEITSPALTEN:
         index = SPALTEN.index(name) + 1
@@ -241,4 +286,6 @@ def zusammenfassung(zeilen: list[dict]) -> dict:
         "aus_signatur": mit_signatur,
         "anteil_aus_signatur": mit_signatur / len(zeilen) if zeilen else 0.0,
         "aktiv": sum(1 for z in zeilen if z["Status"] == "aktiv"),
+        "mit_funktion": sum(1 for z in zeilen if z["Funktion"]),
+        "mit_telefon": sum(1 for z in zeilen if z["Telefon"] or z["Mobil"]),
     }

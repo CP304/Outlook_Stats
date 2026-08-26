@@ -59,6 +59,9 @@ python -m okoa kontakte --domain firma.de              # Firma aus dem Domainnam
 python -m okoa kontakte --domain firma.de --signaturen # Firma aus Signaturen belegt
 ```
 
+Mit `--signaturen` kommen Funktion, Telefon und Mobil aus der Signatur dazu — regelbasiert, ohne
+Sprachmodell, und nur wenn mindestens zwei Signaturen dasselbe sagen. Fax wird nie übernommen.
+
 `--signaturen` ist die einzige Stelle im Projekt, die Mailtexte liest — bewusst nicht die Vorgabe.
 Warum das trotzdem deterministisch bleibt und was datenschutzrechtlich dazugehört, steht in
 [Kapitel 10](docs/10-kontaktliste.md).

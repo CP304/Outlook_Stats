@@ -131,3 +131,38 @@ def postfach_erzeugen(
 
     nachrichten.sort(key=lambda n: n.zeitstempel)
     return nachrichten
+
+
+# Beispielsignaturen fuer die Demo -- damit sichtbar wird, wie die Spalten
+# Funktion, Telefon und Mobil gefuellt aussehen.  Reine Phantasiedaten.
+BEISPIEL_SIGNATUREN = [
+    ("Anna Schmidt", "Leiterin Vertrieb", "+49 231 55501-10", "0170 1234567"),
+    ("Tom Berg", "Key Account Manager", "089 998877-12", "0171 2223344"),
+    ("Petra Falk", "Technische Beratung", "0221 4455660", None),
+    ("Jan Kruse", "Geschäftsführer", "+49 40 776655-0", "0151 9988776"),
+    ("Lea Wolter", "Sachbearbeiterin Auftragsabwicklung", "0511 334455-8", None),
+]
+
+
+def belege_erzeugen(nachrichten: list[Nachricht], seed: int = 42) -> dict:
+    """Erfundene Signaturbelege fuer die Demo.
+
+    Bewusst nicht fuer jeden Kontakt: In echten Postfaechern steht die Signatur
+    meist nur in der ersten Mail eines Vorgangs, nicht in jeder Antwort -- leere
+    Felder sind der Normalfall und sollen es in der Demo auch sein.
+    """
+    from .kontakte import Beleg
+
+    zufall = random.Random(seed)
+    adressen = sorted({n.absender_id for n in nachrichten
+                       if n.absender_klasse == EXTERN})
+    belege: dict[str, list] = {}
+    for i, adresse in enumerate(adressen):
+        if i >= len(BEISPIEL_SIGNATUREN):
+            break
+        name, funktion, telefon, mobil = BEISPIEL_SIGNATUREN[i]
+        firma = f"{adresse.split('@')[1].split('.')[0].title()} GmbH"
+        # Zwei Belege -- die Konsensregel verlangt mindestens zwei.
+        belege[adresse] = [Beleg(adresse, name, firma, funktion, telefon, mobil)
+                           for _ in range(zufall.randint(2, 5))]
+    return belege

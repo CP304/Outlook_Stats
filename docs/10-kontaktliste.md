@@ -15,9 +15,12 @@ Ergebnis: `Externe_Kontakte.xlsx` mit Autofilter, absteigend nach Volumen sortie
 | Spalte | Inhalt |
 |---|---|
 | E-Mail, Anzeigename, Domain | der Kontakt |
+| **Funktion** | Rolle aus der Signatur, z. B. „Leiterin Vertrieb" |
+| **Telefon, Mobil** | Rufnummern aus der Signatur — Fax nie |
 | Unternehmen | Firmenname, soweit ermittelbar |
 | **Herkunft Unternehmen** | `Signatur` oder `Domainname` — wie sicher der Name ist |
-| Belege | wie oft die Signatur den Namen bestätigt hat |
+| Belege Unternehmen | wie oft die Signatur den Firmennamen bestätigt hat |
+| Signaturbelege | wie viele auswertbare Signaturen dieser Person vorlagen |
 | Kategorie | aus `mapping_domains`, falls gepflegt |
 | Nachrichten, gesendet, empfangen, Vorgänge | Intensität und Richtung der Beziehung |
 | Erstkontakt, Letzter Kontakt | echte Zeitstempel mit Uhrzeit, in Excel sortierbar |
@@ -68,6 +71,27 @@ Die Konsensregel ist der eigentliche Trick: Sie filtert den Einzelfall heraus, i
 fremde Firma im Fließtext erwähnt hat, und sie lässt den Kollegen, der nie eine Signatur
 mitschickt, die Firmierung seines Hauses erben.
 
+### Funktion und Rufnummern — dieselben Regeln, andere Ebene
+
+Der Firmenname gilt für das ganze Haus, **Funktion und Rufnummern gelten nur für eine Person**.
+Der Konsens läuft deshalb je Adresse, nicht je Domain: Niemand erbt die Rolle seines Kollegen.
+
+- **Funktion**: Eine Zeile zählt nur, wenn sie ein Rollenwort enthält (Leiter, Leitung, Einkauf,
+  Vertrieb, Prokurist, Key Account Manager, Head of …) und weder Rechtsform noch Rufnummer noch
+  Anschrift. Damit fällt die Firmenzeile heraus, die sonst regelmäßig als Funktion durchgeht.
+- **Rufnummern**: Übernommen wird nur, was **beschriftet** ist — `Tel`, `Telefon`, `Phone`, `Fon`,
+  `Durchwahl`, `T:` für Festnetz, `Mobil`, `Handy`, `Cell`, `M:` für mobil. Eine unbeschriftete
+  Ziffernfolge bleibt liegen: Sie könnte eine Kunden-, Auftrags- oder Registernummer sein.
+- **Fax wird nie übernommen.** Eine Faxnummer im Telefonfeld ist schlimmer als ein leeres Feld,
+  weil sie jahrelang unbemerkt weiterverwendet wird.
+- Die Durchwahl bleibt erhalten (`089 123456-12`), und beide Spalten stehen in Excel als **Text** —
+  sonst frisst die Tabelle die führende Null der Vorwahl.
+
+Erwartung an die Trefferquote: Signaturen stehen meist nur in der **ersten** Mail eines Vorgangs,
+nicht in jeder Antwort. Leere Felder sind daher der Normalfall und kein Fehler. Die Spalte
+„Signaturbelege" zeigt, auf wie vielen Signaturen eine Zeile beruht — bei 0 wurde schlicht keine
+gefunden.
+
 Erwartungswert aus der Praxis: Bei aktiven Geschäftspartnern greift die Signaturerkennung gut, bei
 Einmalkontakten selten. Ein Feld bleibt lieber leer, als einen falschen Namen zu behaupten — deshalb
 steht die Herkunft in jeder Zeile.
@@ -82,6 +106,10 @@ Was daraus folgt:
 
 - **Zweck vorher festlegen.** Lieferantenübersicht, Ansprechpartnerpflege, Übergabe bei
   Stellenwechsel — der Zweck bestimmt, wie lange die Datei existieren darf.
+- **Mit Funktion und Rufnummer wird aus einer Adressliste ein Profil.** Name, Rolle, Durchwahl,
+  Mobilnummer und Kontakthistorie in einer Zeile sind mehr als die Summe der Teile. Genau diese
+  Datei ist es, die man nicht unbedacht weitergibt — und die ein Argument dafür ist, sie nicht
+  „für alle Fälle" mitlaufen zu lassen, sondern nur, wenn ein konkreter Zweck vorliegt.
 - **Die Betroffenen sind Dritte.** Die Ansprechpartner bei Lieferanten wissen nichts von dieser
   Liste. Ihre Daten stammen aus einer Geschäftsbeziehung und dürfen dort auch bleiben; ein
   Weiterverwenden für anderes (Marketing, Bewertung, Weitergabe) wäre eine erneute Zweckänderung.

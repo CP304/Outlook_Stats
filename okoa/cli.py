@@ -113,7 +113,7 @@ def befehl_neu(args) -> int:
 
 
 def befehl_demo(args) -> int:
-    from .synthetic import postfach_erzeugen
+    from .synthetic import belege_erzeugen, postfach_erzeugen
 
     ordner = Path(args.ordner)
     config = Config(interne_domains=["firma.de"])
@@ -129,8 +129,9 @@ def befehl_demo(args) -> int:
     from . import threads
 
     vorgaenge = threads.vorgaenge_bilden(nachrichten)
-    zeilen = kontakte_modul.als_zeilen(kontakte_modul.sammeln(vorgaenge),
-                                       stichtag=datetime(2026, 6, 30))
+    zeilen = kontakte_modul.als_zeilen(
+        kontakte_modul.sammeln(vorgaenge, belege_erzeugen(nachrichten)),
+        stichtag=datetime(2026, 6, 30))
     ziel = kontakte_modul.schreiben(zeilen, ordner / "Externe_Kontakte.xlsx")
     print(f"    Externe Kontakte: {ziel} ({len(zeilen)} Einträge)")
     return 0
@@ -199,6 +200,10 @@ def befehl_kontakte(args) -> int:
               f"({zusammen['anteil_aus_signatur']:.0%})")
         print("  Beim Rest steht der Domainname -- die Spalte 'Herkunft Unternehmen'")
         print("  weist das aus, damit niemand eine Lesehilfe fuer eine Firmierung haelt.")
+        print(f"  Funktion gefunden:  {zusammen['mit_funktion']} Kontakte")
+        print(f"  Rufnummer gefunden: {zusammen['mit_telefon']} Kontakte")
+        print("  Leere Felder sind der Normalfall: Signaturen stehen meist nur in")
+        print("  der ersten Mail eines Vorgangs, nicht in jeder Antwort.")
     print(f"\n  Datei: {ziel}")
     return 0
 
