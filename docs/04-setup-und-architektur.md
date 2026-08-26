@@ -67,6 +67,32 @@ in Konzernstrukturen systematisch geschönt.
 Ausgeschlossen werden per Default: Entwürfe (nie versendet), Gelöschte Elemente (Zufallsauswahl),
 Junk (kein Arbeitsverkehr). Der Ausschluss wird im Report benannt.
 
+## Einstellungen weitergeben
+
+Die eigentliche Pflegearbeit steckt nicht in der Konfiguration, sondern in der
+Fachbereichszuordnung. Wer einmal die relevanten Kollegen ihren Abteilungen zugeordnet hat, soll das
+nicht wiederholen müssen — und der nächste Nutzer erst recht nicht bei null anfangen.
+
+```
+python -m okoa export                      # schreibt Einstellungen.json
+python -m okoa import Einstellungen.json   # übernimmt sie
+```
+
+**Was mitgeht** ist Organisationswissen: interne und Konzerndomains, Zeitraum und Schwellen, die
+Fachbereichs- und Rollenzuordnung, die Domainkategorien.
+
+**Was bewusst nicht mitgeht**, sind die Volumenspalten der Zuordnungsdatei. „Vorgänge: 84" sieht
+harmlos aus, ist aber eine Aussage darüber, mit wem der Ersteller wie viel zu tun hatte — also seine
+Postfachdaten und nicht die des Unternehmens. Sie werden beim Export entfernt; `enthaelt_volumendaten()`
+erlaubt dem Empfänger, das selbst nachzuprüfen. Ebenso fallen ungepflegte Zeilen heraus: Eine Adresse
+ohne Zuordnung wäre beim Empfänger nur eine Liste fremder Kollegen.
+
+**Beim Zusammenführen gewinnt die eigene Zuordnung.** Neue Einträge kommen hinzu, eigene leere Felder
+werden ergänzt, aber ein Widerspruch wird nicht stillschweigend überschrieben — sonst verliert jemand
+seine Arbeit, weil ihm jemand eine Datei geschickt hat. Der Bericht zählt auf, was passiert ist;
+`--ueberschreiben` dreht die Regel bewusst um, `--nur-zuordnungen` lässt die eigene Konfiguration
+unangetastet. Zweimal einlesen erzeugt keine Dubletten.
+
 ## Pipeline
 
 ```

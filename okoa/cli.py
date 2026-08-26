@@ -14,6 +14,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from . import einstellungen as einstellungen_modul
 from . import kontakte as kontakte_modul
 from . import mapping, pipeline, team_export
 from .config import Config
@@ -116,7 +117,9 @@ def befehl_demo(args) -> int:
     from .synthetic import belege_erzeugen, postfach_erzeugen
 
     ordner = Path(args.ordner)
+    ordner.mkdir(parents=True, exist_ok=True)
     config = Config(interne_domains=["firma.de"])
+    config.speichern(ordner / DATEI_CONFIG)
     print("  Erzeuge Beispieldaten (kein Outlook, keine echten Mails) ...")
     nachrichten = postfach_erzeugen(args.vorgaenge)
     ergebnis = pipeline.auswerten(
@@ -208,6 +211,52 @@ def befehl_kontakte(args) -> int:
     return 0
 
 
+def befehl_export(args) -> int:
+    """Einstellungen und gepflegte Zuordnungen weitergeben."""
+    try:
+        ziel, info = einstellungen_modul.exportieren(Path(args.ordner), args.datei)
+    except einstellungen_modul.ExportFehler as fehler:
+        print(f"  {fehler}")
+        return 2
+    print(f"  Geschrieben: {ziel}")
+    print(f"    interne Domains:     {info['interne_domains']}")
+    print(f"    Fachbereiche:        {info['fachbereiche']} Zuordnungen")
+    print(f"    Domainkategorien:    {info['domainkategorien']} Zuordnungen")
+    print()
+    print("  Enthalten ist Organisationswissen: Domains, Fachbereiche, Kategorien.")
+    print("  Nicht enthalten sind die Volumenzahlen aus der Zuordnungsdatei -- sie")
+    print("  verraten, mit wem der Ersteller wie viel zu tun hatte, und gehoeren")
+    print("  damit zu seinem Postfach, nicht zum Unternehmen.")
+    return 0
+
+
+def befehl_import(args) -> int:
+    """Einstellungen eines Kollegen uebernehmen."""
+    try:
+        bericht = einstellungen_modul.importieren(
+            args.datei, Path(args.ordner), ueberschreiben=args.ueberschreiben,
+            konfiguration_uebernehmen=not args.nur_zuordnungen)
+    except einstellungen_modul.ImportFehler as fehler:
+        print(f"  {fehler}")
+        return 2
+
+    if "konfiguration" in bericht:
+        konfig = bericht["konfiguration"]
+        print(f"  Konfiguration übernommen: {', '.join(konfig['interne_domains'])}, "
+              f"{konfig['zeitraum_monate']} Monate")
+    for name, titel in (("fachbereiche", "Fachbereiche"),
+                        ("domainkategorien", "Domainkategorien")):
+        z = bericht[name]
+        print(f"  {titel}: {z['neu']} neu, {z['ergaenzt']} ergänzt, "
+              f"{z['behalten']} eigene behalten, {z['ueberschrieben']} überschrieben")
+    if any(bericht[n]["behalten"] for n in ("fachbereiche", "domainkategorien")) \
+            and not args.ueberschreiben:
+        print()
+        print("  Wo sich beide Seiten widersprechen, gilt die eigene Zuordnung.")
+        print("  Mit --ueberschreiben gilt stattdessen die eingelesene Datei.")
+    return 0
+
+
 def befehl_merge(args) -> int:
     """Liest ausschließlich Teamexporte -- kein Zugang zu Postfächern oder Rohdaten."""
     ordner = Path(args.ordner)
@@ -285,6 +334,25 @@ def parser_bauen() -> argparse.ArgumentParser:
         help="Firmennamen aus Signaturen lesen. Liest dafür das Ende der "
              "Mailtexte -- bewusst nicht die Vorgabe, siehe docs/10-kontaktliste.md")
     p_kontakte.set_defaults(funktion=befehl_kontakte)
+
+    p_export = unterbefehle.add_parser(
+        "export", help="eigene Einstellungen und Zuordnungen weitergeben")
+    p_export.add_argument("--ordner", default=str(ARBEITSORDNER))
+    p_export.add_argument("--datei", help="Zieldatei (Vorgabe: Einstellungen.json "
+                                          "im Arbeitsordner)")
+    p_export.set_defaults(funktion=befehl_export)
+
+    p_import = unterbefehle.add_parser(
+        "import", help="Einstellungen eines Kollegen übernehmen")
+    p_import.add_argument("datei", help="die erhaltene Einstellungsdatei")
+    p_import.add_argument("--ordner", default=str(ARBEITSORDNER))
+    p_import.add_argument("--ueberschreiben", action="store_true",
+                          help="bei Widerspruch die eingelesene Datei gewinnen lassen "
+                               "(Vorgabe: die eigene Zuordnung behalten)")
+    p_import.add_argument("--nur-zuordnungen", action="store_true",
+                          help="nur Fachbereiche und Kategorien übernehmen, "
+                               "die eigene Konfiguration unangetastet lassen")
+    p_import.set_defaults(funktion=befehl_import)
 
     p_merge = unterbefehle.add_parser("merge", help="Teamexporte zusammenführen")
     p_merge.add_argument("--ordner", default=".", help="Ordner mit den team_export-Dateien")

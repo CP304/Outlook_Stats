@@ -66,6 +66,16 @@ Sprachmodell, und nur wenn mindestens zwei Signaturen dasselbe sagen. Fax wird n
 Warum das trotzdem deterministisch bleibt und was datenschutzrechtlich dazugehört, steht in
 [Kapitel 10](docs/10-kontaktliste.md).
 
+Einmal gepflegte Zuordnungen an Kollegen weitergeben (oder beim Rechnerwechsel mitnehmen):
+
+```
+python -m okoa export                      # Einstellungen.json schreiben
+python -m okoa import Einstellungen.json   # übernehmen; eigene Zuordnung gewinnt
+```
+
+Mit wandern Domains, Fachbereiche, Rollen und Kategorien — **nicht** die Volumenzahlen aus der
+Zuordnungsdatei, denn die gehören zum Postfach des Erstellers.
+
 Für den Teammodus führt jeder die Analyse selbst aus; die Zusammenführung der freiwillig geteilten
 Kennzahlen läuft über `python -m okoa merge --ordner Eingang` (oder `Merge_starten.bat`). Sie
 verweigert unter fünf Teilnehmern bewusst jedes Ergebnis — Einzelheiten in Kapitel 08 und 09.
@@ -79,6 +89,7 @@ okoa/threads.py           Vorgangsbildung mit zwei Verfahren
 okoa/metrics.py           KPI-Berechnung
 okoa/report.py            HTML-Report mit eigenen SVG-Diagrammen
 okoa/team_export.py       anonymer Export und Zusammenführung
+okoa/einstellungen.py     Weitergabe von Konfiguration und Zuordnungen
 okoa/kontakte.py          externe Kontaktliste als Excel
 okoa/signaturen.py        Firmennamen aus Signaturen, regelbasiert
 ```
