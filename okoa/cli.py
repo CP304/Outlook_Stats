@@ -14,7 +14,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import pipeline, team_export
+from . import kontakte as kontakte_modul
+from . import mapping, pipeline, team_export
 from .config import Config
 
 
@@ -117,12 +118,88 @@ def befehl_demo(args) -> int:
     ordner = Path(args.ordner)
     config = Config(interne_domains=["firma.de"])
     print("  Erzeuge Beispieldaten (kein Outlook, keine echten Mails) ...")
+    nachrichten = postfach_erzeugen(args.vorgaenge)
     ergebnis = pipeline.auswerten(
-        postfach_erzeugen(args.vorgaenge), config, ordner,
+        nachrichten, config, ordner,
         kontext={"stores": ["Beispielpostfach"]},
         bezugszeitpunkt=datetime(2026, 6, 30),
     )
     _abschluss(ergebnis, ordner, teilen_anbieten=False)
+
+    from . import threads
+
+    vorgaenge = threads.vorgaenge_bilden(nachrichten)
+    zeilen = kontakte_modul.als_zeilen(kontakte_modul.sammeln(vorgaenge),
+                                       stichtag=datetime(2026, 6, 30))
+    ziel = kontakte_modul.schreiben(zeilen, ordner / "Externe_Kontakte.xlsx")
+    print(f"    Externe Kontakte: {ziel} ({len(zeilen)} Einträge)")
+    return 0
+
+
+def befehl_kontakte(args) -> int:
+    """Externe Kontakte als Excel.
+
+    Das Ergebnis ist eine personenbezogene Liste und keine Kennzahl -- es faellt
+    damit unter eine andere Bewertung als die aggregierte Auswertung.
+    Siehe docs/10-kontaktliste.md.
+    """
+    from .extract_outlook import OutlookNichtVerfuegbar, auslesen
+
+    ordner = Path(args.ordner)
+    ordner.mkdir(parents=True, exist_ok=True)
+    config = _konfiguration(args, ordner)
+    fehler = config.pruefen()
+    if fehler:
+        for f in fehler:
+            print(f"  {f}")
+        return 2
+
+    # Fuer die Adressernte zaehlt Vollstaendigkeit: hier werden nur Junk und
+    # Papierkorb ausgelassen, nicht die weiteren Ordner der Kennzahlenanalyse.
+    config.ordner_ausschluss = [n for n in config.ordner_ausschluss
+                                if any(wort in n.lower() for wort in
+                                       ("junk", "spam", "gelöscht", "geloescht",
+                                        "deleted"))]
+    print(f"  Lese Outlook (Zeitraum: letzte {config.zeitraum_monate} Monate) ...")
+    print(f"  Ausgelassen werden nur: {', '.join(config.ordner_ausschluss)}")
+    if args.signaturen:
+        print("  Signaturauswertung ist eingeschaltet: Vom Mailtext wird das Ende")
+        print("  gelesen, um Firmennamen zu finden. Gespeichert wird davon nur der")
+        print("  gefundene Name -- kein Text, keine Betreffzeile.")
+    else:
+        print("  Ohne Signaturauswertung: Der Firmenname wird aus der Domain")
+        print("  abgeleitet. Mit --signaturen wird er aus Signaturen belegt.")
+    try:
+        nachrichten, berichte = auslesen(
+            config, fortschritt=lambda t: print(f"    {t}"),
+            kontakte_sammeln=True, mit_signaturen=args.signaturen)
+    except OutlookNichtVerfuegbar as fehler:
+        print(f"\n  {fehler}")
+        return 3
+
+    from .normalize import deduplizieren
+    from . import threads
+
+    entdoppelt, _ = deduplizieren(nachrichten)
+    threads.zuordnen(entdoppelt, luecke_tage=config.schwellen.thread_luecke_tage)
+    vorgaenge = threads.vorgaenge_bilden(entdoppelt)
+    liste = kontakte_modul.sammeln(vorgaenge, berichte.get("kontaktbelege"))
+    kategorien = mapping.zuordnung_lesen(ordner / pipeline.DATEI_DOMAINS,
+                                        "Domain", "Kategorie")
+    zeilen = kontakte_modul.als_zeilen(liste, kategorien)
+    ziel = kontakte_modul.schreiben(zeilen, ordner / "Externe_Kontakte.xlsx")
+
+    zusammen = kontakte_modul.zusammenfassung(zeilen)
+    print()
+    print(f"  {zusammen['kontakte']} externe Kontakte bei {zusammen['domains']} Unternehmen")
+    print(f"  davon {zusammen['aktiv']} in den letzten "
+          f"{kontakte_modul.INAKTIV_AB_TAGEN} Tagen aktiv")
+    if args.signaturen:
+        print(f"  Firmenname aus Signatur belegt: {zusammen['aus_signatur']} Kontakte "
+              f"({zusammen['anteil_aus_signatur']:.0%})")
+        print("  Beim Rest steht der Domainname -- die Spalte 'Herkunft Unternehmen'")
+        print("  weist das aus, damit niemand eine Lesehilfe fuer eine Firmierung haelt.")
+    print(f"\n  Datei: {ziel}")
     return 0
 
 
@@ -194,6 +271,15 @@ def parser_bauen() -> argparse.ArgumentParser:
     p_demo.add_argument("--vorgaenge", type=int, default=300)
     p_demo.set_defaults(funktion=befehl_demo, hypothese=0.80, ohne_teilen=True,
                         domain=None, konzern=None, monate=None)
+
+    p_kontakte = unterbefehle.add_parser(
+        "kontakte", help="externe Kontakte als Excel ausgeben")
+    gemeinsam(p_kontakte)
+    p_kontakte.add_argument(
+        "--signaturen", action="store_true",
+        help="Firmennamen aus Signaturen lesen. Liest dafür das Ende der "
+             "Mailtexte -- bewusst nicht die Vorgabe, siehe docs/10-kontaktliste.md")
+    p_kontakte.set_defaults(funktion=befehl_kontakte)
 
     p_merge = unterbefehle.add_parser("merge", help="Teamexporte zusammenführen")
     p_merge.add_argument("--ordner", default=".", help="Ordner mit den team_export-Dateien")

@@ -1,0 +1,207 @@
+"""Externe Kontakte sammeln und als Excel ausgeben.
+
+Anders als der Rest des Projekts ist das Ergebnis hier eine **personenbezogene
+Liste**, keine Kennzahl.  Sie hat einen eigenen Zweck (Adressbestand,
+Lieferantenuebersicht) und faellt damit unter eine andere datenschutzrechtliche
+Bewertung als die aggregierte Auswertung -- siehe docs/10-kontaktliste.md.
+
+Die Firmenzuordnung kennt drei Herkuenfte, die in der Ausgabe immer sichtbar
+sind.  Wer eine Zahl weiterverwendet, soll wissen, wie sicher sie ist:
+
+    signatur   mehrfach uebereinstimmend aus Signaturen gelesen  -- belastbar
+    domain     aus dem Domainnamen abgeleitet                    -- Lesehilfe
+    (leer)     nichts Eindeutiges gefunden                       -- ehrlich
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+from .model import EXTERN, RICHTUNG_GESENDET, Nachricht, Vorgang
+from .normalize import adresse_normalisieren, domain_von, ist_automat
+from .signaturen import aus_domain, konsens
+
+
+HERKUNFT_SIGNATUR = "Signatur"
+HERKUNFT_DOMAIN = "Domainname"
+HERKUNFT_KEINE = ""
+
+SPALTEN = [
+    "E-Mail", "Anzeigename", "Domain", "Unternehmen", "Herkunft Unternehmen",
+    "Belege", "Kategorie", "Nachrichten", "gesendet", "empfangen", "Vorgänge",
+    "Erstkontakt", "Letzter Kontakt", "Tage seit letztem Kontakt", "Status",
+]
+
+# Ab wann ein Kontakt als eingeschlafen gilt.  Reine Lesehilfe, keine Bewertung.
+INAKTIV_AB_TAGEN = 180
+
+
+@dataclass
+class Beleg:
+    """Was die Extraktion je Nachricht ueber einen Kontakt gesehen hat."""
+
+    adresse: str
+    anzeigename: str = ""
+    firma_kandidat: str | None = None
+
+
+@dataclass
+class Kontakt:
+    adresse: str
+    domain: str
+    anzeigenamen: Counter = field(default_factory=Counter)
+    firma_kandidaten: list[str] = field(default_factory=list)
+    nachrichten: int = 0
+    gesendet: int = 0
+    empfangen: int = 0
+    vorgaenge: set[str] = field(default_factory=set)
+    erstkontakt: datetime | None = None
+    letzter_kontakt: datetime | None = None
+
+    def anzeigename(self) -> str:
+        """Der haeufigste Anzeigename -- Schreibweisen schwanken."""
+        return self.anzeigenamen.most_common(1)[0][0] if self.anzeigenamen else ""
+
+
+def sammeln(vorgaenge: list[Vorgang], belege: dict[str, list[Beleg]] | None = None,
+            automaten_ausschliessen: bool = True) -> list[Kontakt]:
+    """Baut die Kontaktliste aus den bereits klassifizierten Nachrichten.
+
+    Ohne Belege (also aus der Zwischendatei heraus) entsteht die Liste trotzdem
+    -- dann eben ohne Anzeigenamen und ohne Signaturauswertung.
+    """
+    belege = belege or {}
+    kontakte: dict[str, Kontakt] = {}
+
+    for vorgang in vorgaenge:
+        for nachricht in vorgang.nachrichten:
+            if not nachricht.ist_auswertbar:
+                continue
+            paare = zip([nachricht.absender_id, *nachricht.empfaenger_ids],
+                        [nachricht.absender_klasse, *nachricht.empfaenger_klassen])
+            for adresse, klasse in paare:
+                if klasse != EXTERN:
+                    continue
+                adresse = adresse_normalisieren(adresse)
+                if not adresse or (automaten_ausschliessen and ist_automat(adresse)):
+                    continue
+
+                kontakt = kontakte.get(adresse)
+                if kontakt is None:
+                    kontakt = Kontakt(adresse=adresse, domain=domain_von(adresse))
+                    kontakte[adresse] = kontakt
+                kontakt.nachrichten += 1
+                if nachricht.richtung == RICHTUNG_GESENDET:
+                    kontakt.gesendet += 1
+                else:
+                    kontakt.empfangen += 1
+                kontakt.vorgaenge.add(vorgang.thread_id)
+                if kontakt.erstkontakt is None or nachricht.zeitstempel < kontakt.erstkontakt:
+                    kontakt.erstkontakt = nachricht.zeitstempel
+                if kontakt.letzter_kontakt is None or nachricht.zeitstempel > kontakt.letzter_kontakt:
+                    kontakt.letzter_kontakt = nachricht.zeitstempel
+
+    for adresse, eintraege in belege.items():
+        kontakt = kontakte.get(adresse_normalisieren(adresse))
+        if kontakt is None:
+            continue
+        for beleg in eintraege:
+            if beleg.anzeigename:
+                kontakt.anzeigenamen[beleg.anzeigename.strip()] += 1
+            if beleg.firma_kandidat:
+                kontakt.firma_kandidaten.append(beleg.firma_kandidat)
+
+    return sorted(kontakte.values(), key=lambda k: (-k.nachrichten, k.adresse))
+
+
+def firmen_je_domain(kontakte: list[Kontakt]) -> dict[str, tuple[str, int]]:
+    """Konsens ueber alle Kontakte einer Domain.
+
+    Bewusst auf Domainebene: Signaturen einzelner Personen sind lueckenhaft,
+    aber eine Firmierung gilt fuer das ganze Haus.  So profitiert auch der
+    Kollege, der nie eine Signatur mitgeschickt hat.
+    """
+    je_domain: dict[str, list[str]] = {}
+    for kontakt in kontakte:
+        je_domain.setdefault(kontakt.domain, []).extend(kontakt.firma_kandidaten)
+    return {domain: konsens(kandidaten) for domain, kandidaten in je_domain.items()}
+
+
+def als_zeilen(kontakte: list[Kontakt], kategorien: dict[str, str] | None = None,
+               stichtag: datetime | None = None) -> list[dict]:
+    kategorien = kategorien or {}
+    stichtag = stichtag or datetime.now()
+    firmen = firmen_je_domain(kontakte)
+
+    zeilen = []
+    for kontakt in kontakte:
+        name, belege = firmen.get(kontakt.domain, (None, 0))
+        if name:
+            unternehmen, herkunft = name, HERKUNFT_SIGNATUR
+        else:
+            unternehmen, herkunft = aus_domain(kontakt.domain), HERKUNFT_DOMAIN
+            belege = 0
+        # Nie negativ: ein Kontakt von heute Nachmittag liegt sonst "-1 Tage"
+        # zurueck, was in der Tabelle wie ein Fehler aussieht.
+        tage = (max(0, (stichtag - kontakt.letzter_kontakt).days)
+                if kontakt.letzter_kontakt else None)
+        zeilen.append({
+            "E-Mail": kontakt.adresse,
+            "Anzeigename": kontakt.anzeigename(),
+            "Domain": kontakt.domain,
+            "Unternehmen": unternehmen,
+            "Herkunft Unternehmen": herkunft,
+            "Belege": belege,
+            "Kategorie": kategorien.get(kontakt.domain, ""),
+            "Nachrichten": kontakt.nachrichten,
+            "gesendet": kontakt.gesendet,
+            "empfangen": kontakt.empfangen,
+            "Vorgänge": len(kontakt.vorgaenge),
+            "Erstkontakt": kontakt.erstkontakt.strftime("%d.%m.%Y") if kontakt.erstkontakt else "",
+            "Letzter Kontakt": (kontakt.letzter_kontakt.strftime("%d.%m.%Y")
+                                if kontakt.letzter_kontakt else ""),
+            "Tage seit letztem Kontakt": tage if tage is not None else "",
+            "Status": ("aktiv" if tage is not None and tage <= INAKTIV_AB_TAGEN
+                       else "eingeschlafen"),
+        })
+    return zeilen
+
+
+def schreiben(zeilen: list[dict], pfad: Path | str) -> Path:
+    """Schreibt als .xlsx mit Autofilter; ohne openpyxl als .csv."""
+    from . import mapping
+
+    pfad = Path(pfad)
+    ziel = mapping.schreiben(zeilen, SPALTEN, pfad)
+    if ziel.suffix.lower() == ".xlsx":
+        _verschoenern(ziel, len(zeilen))
+    return ziel
+
+
+def _verschoenern(pfad: Path, anzahl: int) -> None:
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        return
+    mappe = load_workbook(pfad)
+    blatt = mappe.active
+    blatt.auto_filter.ref = f"A1:{blatt.cell(row=1, column=len(SPALTEN)).column_letter}" \
+                            f"{anzahl + 1}"
+    for spalte, breite in (("A", 38), ("B", 26), ("C", 26), ("D", 36), ("E", 20)):
+        blatt.column_dimensions[spalte].width = breite
+    mappe.save(pfad)
+
+
+def zusammenfassung(zeilen: list[dict]) -> dict:
+    domains = {z["Domain"] for z in zeilen}
+    mit_signatur = sum(1 for z in zeilen if z["Herkunft Unternehmen"] == HERKUNFT_SIGNATUR)
+    return {
+        "kontakte": len(zeilen),
+        "domains": len(domains),
+        "aus_signatur": mit_signatur,
+        "anteil_aus_signatur": mit_signatur / len(zeilen) if zeilen else 0.0,
+        "aktiv": sum(1 for z in zeilen if z["Status"] == "aktiv"),
+    }

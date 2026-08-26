@@ -12,4 +12,5 @@ Team_Report*.json
 team_export*.json
 mapping_personen.*
 mapping_domains.*
+Externe_Kontakte.*
 config.json

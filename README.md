@@ -52,6 +52,17 @@ Das erzeugt im Ordner `Auswertung`:
 Nach dem Ausfüllen der Zuordnung genügt `python -m okoa neu` — das rechnet auf der Zwischendatei und
 braucht weder Outlook noch einen zweiten Postfachzugriff.
 
+Alle externen Kontakte als Excel — mit Firmenname, Volumen, Richtung und letztem Kontakt:
+
+```
+python -m okoa kontakte --domain firma.de              # Firma aus dem Domainnamen
+python -m okoa kontakte --domain firma.de --signaturen # Firma aus Signaturen belegt
+```
+
+`--signaturen` ist die einzige Stelle im Projekt, die Mailtexte liest — bewusst nicht die Vorgabe.
+Warum das trotzdem deterministisch bleibt und was datenschutzrechtlich dazugehört, steht in
+[Kapitel 10](docs/10-kontaktliste.md).
+
 Für den Teammodus führt jeder die Analyse selbst aus; die Zusammenführung der freiwillig geteilten
 Kennzahlen läuft über `python -m okoa merge --ordner Eingang` (oder `Merge_starten.bat`). Sie
 verweigert unter fünf Teilnehmern bewusst jedes Ergebnis — Einzelheiten in Kapitel 08 und 09.
@@ -65,6 +76,8 @@ okoa/threads.py           Vorgangsbildung mit zwei Verfahren
 okoa/metrics.py           KPI-Berechnung
 okoa/report.py            HTML-Report mit eigenen SVG-Diagrammen
 okoa/team_export.py       anonymer Export und Zusammenführung
+okoa/kontakte.py          externe Kontaktliste als Excel
+okoa/signaturen.py        Firmennamen aus Signaturen, regelbasiert
 ```
 
 Nur die erste Stufe braucht Windows und Outlook. Alles Weitere rechnet auf der Zwischendatei und ist
@@ -99,6 +112,7 @@ konstruktionsbedingt keinen Zugang zu Rohdaten hat.
 | [07 – Roadmap](docs/07-roadmap.md) | Ausbaustufen, kritisch sortiert |
 | [08 – Datenschutz](docs/08-datenschutz.md) | Was als Führungskraft geht und was nicht |
 | [09 – Teilnahme](docs/09-teilnahme.md) | Wie Kollegen freiwillig und anonym teilnehmen können |
+| [10 – Kontaktliste](docs/10-kontaktliste.md) | Externe Kontakte als Excel — mit eigener Rechtslage |
 
 ## Wichtiger Hinweis
 

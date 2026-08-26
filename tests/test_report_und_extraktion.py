@@ -90,8 +90,47 @@ def test_extraktion_schreibt_nicht():
     """Read-only ist eine Zusage, keine Absicht: kein Save, kein Move, kein Delete."""
     quelle = _quelltext_ohne_text(extract_outlook)
     for verboten in (".Save()", ".Move(", ".Delete()", ".Send()", "UnRead",
-                     ".Body", "MarkAsTask", "PropertyAccessor.SetProperty"):
-        assert verboten not in quelle, f"'{verboten}' wuerde das Postfach anfassen"
+                     "MarkAsTask", "PropertyAccessor.SetProperty"):
+        assert verboten not in quelle, f"'{verboten}' wuerde das Postfach veraendern"
+
+
+def test_mailtext_wird_nur_an_einer_stelle_gelesen():
+    """Der Zugriff auf .Body ist der einzige Bruch mit 'nur Metadaten'.
+
+    Er darf deshalb genau eine Fundstelle haben -- die Signaturauswertung --
+    damit er pruefbar bleibt und nicht unbemerkt einwandert.
+    """
+    import inspect
+
+    quelle = inspect.getsource(extract_outlook)
+    assert quelle.count("item.Body") == 1
+    assert "item.Body" in inspect.getsource(extract_outlook._signaturteil)
+
+
+def test_signaturauswertung_ist_per_vorgabe_aus():
+    """Ohne ausdrueckliche Anforderung wird kein Mailtext angefasst."""
+    import inspect
+
+    signatur = inspect.signature(extract_outlook.auslesen)
+    assert signatur.parameters["mit_signaturen"].default is False
+    assert signatur.parameters["kontakte_sammeln"].default is False
+
+
+def test_ohne_signaturen_kein_firmenkandidat():
+    class Attrappe:
+        Body = "Mit freundlichen Grüßen\nAnna Schmidt\nMuster GmbH & Co. KG"
+        SenderName = "Anna Schmidt"
+        Recipients = []
+
+    from okoa.model import EXTERN, Nachricht
+
+    nachricht = Nachricht(msg_hash="m1", zeitstempel=datetime(2026, 1, 1),
+                          richtung="empfangen", absender_id="a@extern.com",
+                          absender_klasse=EXTERN, absender_domain="extern.com")
+    ohne = extract_outlook._kontaktbelege(Attrappe(), nachricht, mit_signaturen=False)
+    mit = extract_outlook._kontaktbelege(Attrappe(), nachricht, mit_signaturen=True)
+    assert ohne[0].firma_kandidat is None
+    assert mit[0].firma_kandidat == "Muster GmbH & Co. KG"
 
 
 def test_extraktion_ohne_outlook_meldet_verstaendlich():

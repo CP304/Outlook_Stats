@@ -18,10 +18,12 @@ from .config import Config
 from .model import (
     RICHTUNG_EMPFANGEN, RICHTUNG_GESENDET, UNAUFGELOEST, Nachricht,
 )
+from .kontakte import Beleg
 from .normalize import (
     adresse_klassifizieren, adresse_normalisieren, betreff_hashen,
     duplikat_schluessel, ist_antwort_betreff, ist_x500, nachricht_klassifizieren,
 )
+from .signaturen import firma_kandidat
 
 
 # MAPI-Eigenschaften, die ueber den PropertyAccessor erreichbar sind.
@@ -135,6 +137,52 @@ def ordner_sammeln(namespace, config: Config) -> list:
 
 
 # ---------------------------------------------------------- Nachrichten
+
+def _signaturteil(item) -> str:
+    """Liest NUR das Ende des Mailtexts, fuer die Firmenerkennung.
+
+    Dies ist die einzige Stelle im Projekt, die einen Mailtext anfasst.  Sie
+    laeuft ausschliesslich, wenn die Signaturauswertung ausdruecklich
+    eingeschaltet wurde, gibt hoechstens die letzten Zeilen zurueck und
+    speichert nichts davon -- weiterverwendet wird allein der gefundene
+    Firmenname.
+    """
+    try:
+        text = item.Body
+    except Exception:
+        return ""
+    if not text:
+        return ""
+    zeilen = str(text).splitlines()
+    return "\n".join(zeilen[-40:])
+
+
+def _kontaktbelege(item, nachricht: Nachricht, mit_signaturen: bool) -> list[Beleg]:
+    """Anzeigenamen und -- optional -- den Firmenkandidaten je externem Kontakt."""
+    kandidat = firma_kandidat(_signaturteil(item)) if mit_signaturen else None
+    belege = []
+
+    if nachricht.absender_klasse == "extern":
+        belege.append(Beleg(
+            adresse=nachricht.absender_id,
+            anzeigename=str(_eigenschaft(item, "SenderName", "")),
+            # Die Signatur gehoert dem Absender -- nur ihm wird sie zugerechnet.
+            firma_kandidat=kandidat,
+        ))
+
+    # Die Empfaengerliste der Nachricht entsteht in _empfaenger_lesen in genau
+    # dieser Reihenfolge -- deshalb passen die Anzeigenamen positionsgenau dazu.
+    try:
+        empfaenger = list(item.Recipients)
+    except Exception:
+        empfaenger = []
+    for e, adresse, klasse in zip(empfaenger, nachricht.empfaenger_ids,
+                                  nachricht.empfaenger_klassen):
+        if klasse == "extern" and adresse:
+            belege.append(Beleg(adresse=adresse,
+                                anzeigename=str(_eigenschaft(e, "Name", ""))))
+    return belege
+
 
 def _anhangszahl(item) -> int:
     """Nur die Anzahl -- Anhangnamen werden bewusst nicht gelesen."""
@@ -262,14 +310,21 @@ def eigene_adressen_ermitteln(namespace) -> set[str]:
     return {a for a in adressen if a}
 
 
-def auslesen(config: Config, fortschritt=None) -> tuple[list[Nachricht], dict]:
-    """Liest alle freigegebenen Ordner im Zeitfenster.  Rein lesend."""
+def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
+             mit_signaturen: bool = False) -> tuple[list[Nachricht], dict]:
+    """Liest alle freigegebenen Ordner im Zeitfenster.  Rein lesend.
+
+    mit_signaturen liest zusaetzlich das Ende der Mailtexte, um Firmennamen zu
+    finden.  Das ist ein bewusster Bruch mit dem Grundsatz 'nur Metadaten' und
+    deshalb nur auf ausdrueckliche Anforderung aktiv.
+    """
     namespace = verbinden()
     eigene = eigene_adressen_ermitteln(namespace)
     beginn = datetime.now() - timedelta(days=30 * config.zeitraum_monate)
     filter_ausdruck = "[ReceivedTime] >= '" + beginn.strftime("%d.%m.%Y 00:00") + "'"
 
     nachrichten: list[Nachricht] = []
+    belege: dict[str, list[Beleg]] = {}
     berichte = {"ordner": [], "stores": set(), "uebersprungen": []}
 
     for store_name, ordnername, ordner in ordner_sammeln(namespace, config):
@@ -295,6 +350,9 @@ def auslesen(config: Config, fortschritt=None) -> tuple[list[Nachricht], dict]:
                 if nachricht is not None:
                     nachrichten.append(nachricht)
                     anzahl += 1
+                    if kontakte_sammeln:
+                        for beleg in _kontaktbelege(item, nachricht, mit_signaturen):
+                            belege.setdefault(beleg.adresse, []).append(beleg)
             except Exception:
                 pass
             try:
@@ -307,4 +365,5 @@ def auslesen(config: Config, fortschritt=None) -> tuple[list[Nachricht], dict]:
 
     berichte["stores"] = sorted(berichte["stores"])
     berichte["eigene_adressen"] = sorted(eigene)
+    berichte["kontaktbelege"] = belege
     return nachrichten, berichte
