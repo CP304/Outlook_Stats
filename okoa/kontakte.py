@@ -32,8 +32,15 @@ HERKUNFT_KEINE = ""
 SPALTEN = [
     "E-Mail", "Anzeigename", "Domain", "Unternehmen", "Herkunft Unternehmen",
     "Belege", "Kategorie", "Nachrichten", "gesendet", "empfangen", "Vorgänge",
-    "Erstkontakt", "Letzter Kontakt", "Tage seit letztem Kontakt", "Status",
+    "Erstkontakt", "Letzter Kontakt", "Letzte eigene Nachricht",
+    "Letzte Nachricht von dort", "Tage seit letztem Kontakt", "Status",
 ]
+
+# Spalten, die als echter Zeitstempel geschrieben werden -- nicht als Text.
+# Sonst sortiert Excel nach Zeichenkette und stellt den 01.02. vor den 30.01.
+ZEITSPALTEN = ["Erstkontakt", "Letzter Kontakt", "Letzte eigene Nachricht",
+               "Letzte Nachricht von dort"]
+ZEITFORMAT = "DD.MM.YYYY HH:MM"
 
 # Ab wann ein Kontakt als eingeschlafen gilt.  Reine Lesehilfe, keine Bewertung.
 INAKTIV_AB_TAGEN = 180
@@ -60,6 +67,8 @@ class Kontakt:
     vorgaenge: set[str] = field(default_factory=set)
     erstkontakt: datetime | None = None
     letzter_kontakt: datetime | None = None
+    letzte_eigene: datetime | None = None
+    letzte_fremde: datetime | None = None
 
     def anzeigename(self) -> str:
         """Der haeufigste Anzeigename -- Schreibweisen schwanken."""
@@ -96,8 +105,14 @@ def sammeln(vorgaenge: list[Vorgang], belege: dict[str, list[Beleg]] | None = No
                 kontakt.nachrichten += 1
                 if nachricht.richtung == RICHTUNG_GESENDET:
                     kontakt.gesendet += 1
+                    if (kontakt.letzte_eigene is None
+                            or nachricht.zeitstempel > kontakt.letzte_eigene):
+                        kontakt.letzte_eigene = nachricht.zeitstempel
                 else:
                     kontakt.empfangen += 1
+                    if (kontakt.letzte_fremde is None
+                            or nachricht.zeitstempel > kontakt.letzte_fremde):
+                        kontakt.letzte_fremde = nachricht.zeitstempel
                 kontakt.vorgaenge.add(vorgang.thread_id)
                 if kontakt.erstkontakt is None or nachricht.zeitstempel < kontakt.erstkontakt:
                     kontakt.erstkontakt = nachricht.zeitstempel
@@ -160,9 +175,15 @@ def als_zeilen(kontakte: list[Kontakt], kategorien: dict[str, str] | None = None
             "gesendet": kontakt.gesendet,
             "empfangen": kontakt.empfangen,
             "Vorgänge": len(kontakt.vorgaenge),
-            "Erstkontakt": kontakt.erstkontakt.strftime("%d.%m.%Y") if kontakt.erstkontakt else "",
-            "Letzter Kontakt": (kontakt.letzter_kontakt.strftime("%d.%m.%Y")
-                                if kontakt.letzter_kontakt else ""),
+            # Echte Zeitstempel, damit sich die Liste in Excel sinnvoll
+            # sortieren und filtern laesst.
+            "Erstkontakt": kontakt.erstkontakt or "",
+            "Letzter Kontakt": kontakt.letzter_kontakt or "",
+            # Getrennt, weil die Frage "ist der Kontakt noch aktuell" anders
+            # ausfaellt, je nachdem wer zuletzt geschrieben hat: eine eigene
+            # Nachricht ohne Antwort ist etwas anderes als ein laufender Dialog.
+            "Letzte eigene Nachricht": kontakt.letzte_eigene or "",
+            "Letzte Nachricht von dort": kontakt.letzte_fremde or "",
             "Tage seit letztem Kontakt": tage if tage is not None else "",
             "Status": ("aktiv" if tage is not None and tage <= INAKTIV_AB_TAGEN
                        else "eingeschlafen"),
@@ -175,7 +196,15 @@ def schreiben(zeilen: list[dict], pfad: Path | str) -> Path:
     from . import mapping
 
     pfad = Path(pfad)
+    if pfad.suffix.lower() != ".xlsx":
+        # In der CSV gibt es keine Zellformate -- dort wird ausgeschrieben.
+        zeilen = [{k: (v.strftime("%d.%m.%Y %H:%M") if isinstance(v, datetime) else v)
+                   for k, v in zeile.items()} for zeile in zeilen]
     ziel = mapping.schreiben(zeilen, SPALTEN, pfad)
+    if ziel.suffix.lower() == ".csv":
+        zeilen = [{k: (v.strftime("%d.%m.%Y %H:%M") if isinstance(v, datetime) else v)
+                   for k, v in zeile.items()} for zeile in zeilen]
+        mapping.schreiben(zeilen, SPALTEN, ziel)
     if ziel.suffix.lower() == ".xlsx":
         _verschoenern(ziel, len(zeilen))
     return ziel
@@ -192,6 +221,14 @@ def _verschoenern(pfad: Path, anzahl: int) -> None:
                             f"{anzahl + 1}"
     for spalte, breite in (("A", 38), ("B", 26), ("C", 26), ("D", 36), ("E", 20)):
         blatt.column_dimensions[spalte].width = breite
+
+    for name in ZEITSPALTEN:
+        index = SPALTEN.index(name) + 1
+        buchstabe = blatt.cell(row=1, column=index).column_letter
+        blatt.column_dimensions[buchstabe].width = 19
+        for zeile in range(2, anzahl + 2):
+            blatt.cell(row=zeile, column=index).number_format = ZEITFORMAT
+    blatt.freeze_panes = "A2"
     mappe.save(pfad)
 
 

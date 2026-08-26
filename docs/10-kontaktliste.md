@@ -20,8 +20,18 @@ Ergebnis: `Externe_Kontakte.xlsx` mit Autofilter, absteigend nach Volumen sortie
 | Belege | wie oft die Signatur den Namen bestätigt hat |
 | Kategorie | aus `mapping_domains`, falls gepflegt |
 | Nachrichten, gesendet, empfangen, Vorgänge | Intensität und Richtung der Beziehung |
-| Erstkontakt, Letzter Kontakt, Tage seit letztem Kontakt | Verlauf |
+| Erstkontakt, Letzter Kontakt | echte Zeitstempel mit Uhrzeit, in Excel sortierbar |
+| Letzte eigene Nachricht / Letzte Nachricht von dort | wer zuletzt geschrieben hat |
+| Tage seit letztem Kontakt | Abstand zum Stichtag |
 | Status | `aktiv` oder `eingeschlafen` (Schwelle 180 Tage) |
+
+Die Zeitspalten stehen als **Datumswerte**, nicht als Text. Das klingt nach einer Kleinigkeit, ist
+aber der Unterschied zwischen einer sortierbaren Liste und einer, in der Excel den 01.02. vor den
+30.01. stellt. Filter wie „letzter Kontakt vor mehr als einem Jahr" funktionieren damit direkt.
+
+Die Richtung ist getrennt ausgewiesen, weil sie die Frage „ist der Kontakt noch aktuell" anders
+beantwortet: Eine eigene Nachricht, auf die seit Monaten nichts kam, ist etwas anderes als ein
+laufender Dialog — im Zweifel ein Hinweis auf eine eingeschlafene Beziehung, nicht auf eine aktive.
 
 Ausgelassen werden hier **nur Junk und Papierkorb** — anders als bei der Kennzahlenanalyse, die
 zusätzlich Entwürfe, RSS und Synchronisierungsordner ausschließt. Für eine Adressernte zählt

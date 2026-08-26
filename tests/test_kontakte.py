@@ -131,6 +131,45 @@ def test_firma_gilt_fuer_die_ganze_domain(vorgaenge):
     assert zeilen[partner.adresse]["Unternehmen"] == "Muster GmbH"
 
 
+def test_zeitstempel_sind_echte_datumswerte(vorgaenge):
+    """Als Text sortiert Excel den 01.02. vor den 30.01. -- also echte Werte."""
+    zeile = kontakte.als_zeilen(kontakte.sammeln(vorgaenge))[0]
+    for spalte in kontakte.ZEITSPALTEN:
+        assert isinstance(zeile[spalte], datetime), spalte
+
+
+def test_letzter_kontakt_ist_der_juengste(vorgaenge):
+    for kontakt in kontakte.sammeln(vorgaenge):
+        zeitpunkte = [t for t in (kontakt.letzte_eigene, kontakt.letzte_fremde) if t]
+        assert kontakt.letzter_kontakt == max(zeitpunkte)
+        assert kontakt.erstkontakt <= kontakt.letzter_kontakt
+
+
+def test_richtung_der_letzten_nachricht_wird_getrennt(vorgaenge):
+    """Eine eigene Nachricht ohne Antwort ist etwas anderes als ein Dialog."""
+    liste = kontakte.sammeln(vorgaenge)
+    assert any(k.letzte_eigene != k.letzte_fremde for k in liste)
+
+
+def test_excel_formatiert_die_zeitstempel(vorgaenge, tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    zeilen = kontakte.als_zeilen(kontakte.sammeln(vorgaenge))
+    ziel = kontakte.schreiben(zeilen, tmp_path / "Externe_Kontakte.xlsx")
+    blatt = openpyxl.load_workbook(ziel).active
+    spalte = kontakte.SPALTEN.index("Letzter Kontakt") + 1
+    zelle = blatt.cell(row=2, column=spalte)
+    assert isinstance(zelle.value, datetime)
+    assert zelle.number_format == kontakte.ZEITFORMAT
+
+
+def test_csv_schreibt_zeitstempel_aus(vorgaenge, tmp_path):
+    zeilen = kontakte.als_zeilen(kontakte.sammeln(vorgaenge))
+    ziel = kontakte.schreiben(zeilen, tmp_path / "Kontakte.csv")
+    text = ziel.read_text(encoding="utf-8-sig")
+    assert "datetime.datetime" not in text
+    assert ":" in text.splitlines()[1]
+
+
 def test_tage_seit_kontakt_nie_negativ(vorgaenge):
     stichtag = datetime(2020, 1, 1)      # vor allen Nachrichten
     for zeile in kontakte.als_zeilen(kontakte.sammeln(vorgaenge), stichtag=stichtag):
