@@ -56,6 +56,11 @@ Für das eigene Postfach: `--alles` erhebt zusätzlich Betreff, Anhangnamen, Gr�
 Antwortzeiten, Arbeitszeitmuster und Kommunikationsnetzwerk ([Kapitel 11](docs/11-vollerhebung.md)).
 Der Teamexport bleibt davon unberührt aggregiert.
 
+Die Fachbereiche werden direkt in der Oberfläche gepflegt („Interne Kontakte und Fachbereiche …“):
+eine nach Volumen sortierte Tabelle, mehrere Zeilen auswählen, Fachbereich zuweisen, speichern.
+Die Statuszeile zeigt, wie viel Volumen bereits abgedeckt ist — meist genügen die obersten 15 bis 25
+Zeilen. Wer lieber in Excel arbeitet, öffnet die Datei von dort aus.
+
 Nach dem Ausfüllen der Zuordnung genügt `python -m okoa neu` — das rechnet auf der Zwischendatei und
 braucht weder Outlook noch einen zweiten Postfachzugriff.
 

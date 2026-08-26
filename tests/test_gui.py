@@ -151,3 +151,108 @@ def test_fenster_weist_fehlende_domain_ab(tmp_path, monkeypatch):
         assert gemeldet and "Domain" in gemeldet[0]
     finally:
         fenster.destroy()
+
+
+# ------------------------------------------------- Zuordnungen pflegen
+
+def _zuordnungsfenster(tmp_path, monkeypatch):
+    tk = pytest.importorskip("tkinter")
+    try:
+        wurzel = tk.Tk()
+    except tk.TclError:
+        pytest.skip("keine Anzeige verfügbar")
+    wurzel.destroy()
+
+    from okoa import gui, mapping
+
+    datei = tmp_path / "mapping_personen.csv"
+    mapping.schreiben([
+        {"E-Mail": "viel@firma.de", "Anzeigename": "Viel", "Nachrichten": 300,
+         "Fachbereich": "", "Rolle": ""},
+        {"E-Mail": "wenig@firma.de", "Anzeigename": "Wenig", "Nachrichten": 100,
+         "Fachbereich": "Finance", "Rolle": ""},
+    ], mapping.SPALTEN_PERSONEN, datei)
+
+    eltern = gui.Fenster()
+    fenster = gui.ZuordnungsFenster(
+        eltern, datei, "E-Mail", "Fachbereich", mapping.SPALTEN_PERSONEN,
+        "Test", ["Engineering"])
+    return eltern, fenster, datei
+
+
+def test_zuordnung_ist_nach_volumen_sortiert(tmp_path, monkeypatch):
+    eltern, fenster, _ = _zuordnungsfenster(tmp_path, monkeypatch)
+    try:
+        erste = fenster.tabelle.item(fenster.tabelle.get_children()[0])["values"]
+        assert erste[0] == "viel@firma.de", "Die größten Posten gehören nach oben"
+    finally:
+        fenster.destroy()
+        eltern.destroy()
+
+
+def test_zuweisen_und_speichern(tmp_path, monkeypatch):
+    eltern, fenster, datei = _zuordnungsfenster(tmp_path, monkeypatch)
+    from okoa import gui, mapping
+
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a, **k: None)
+    try:
+        fenster.tabelle.selection_set(fenster.tabelle.get_children()[0])
+        fenster.eingabe.set("Engineering")
+        fenster._zuweisen()
+        fenster._speichern()
+        zuordnung = mapping.zuordnung_lesen(datei, "E-Mail", "Fachbereich")
+        assert zuordnung["viel@firma.de"] == "Engineering"
+        assert zuordnung["wenig@firma.de"] == "Finance", "Vorhandenes bleibt"
+    finally:
+        fenster.destroy()
+        eltern.destroy()
+
+
+def test_ohne_auswahl_wird_nichts_gesetzt(tmp_path, monkeypatch):
+    eltern, fenster, _ = _zuordnungsfenster(tmp_path, monkeypatch)
+    from okoa import gui
+
+    gemeldet = []
+    monkeypatch.setattr(gui.messagebox, "showinfo",
+                        lambda titel, text: gemeldet.append(text))
+    try:
+        fenster.tabelle.selection_remove(*fenster.tabelle.selection())
+        fenster.eingabe.set("Engineering")
+        fenster._zuweisen()
+        assert gemeldet, "Der Nutzer muss erfahren, warum nichts passiert ist"
+        assert all(not z.get("Fachbereich") or z["Fachbereich"] == "Finance"
+                   for z in fenster.zeilen)
+    finally:
+        fenster.destroy()
+        eltern.destroy()
+
+
+def test_abdeckung_zeigt_den_nutzen(tmp_path, monkeypatch):
+    """Die Anzeige sagt, wann sich weitere Pflege nicht mehr lohnt."""
+    eltern, fenster, _ = _zuordnungsfenster(tmp_path, monkeypatch)
+    from okoa import gui
+
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a, **k: None)
+    try:
+        # Vorher ist nur der kleine Kontakt gepflegt: 100 von 400 Nachrichten.
+        assert "25%" in fenster.stand.cget("text")
+        fenster.tabelle.selection_set(fenster.tabelle.get_children()[0])
+        fenster.eingabe.set("Engineering")
+        fenster._zuweisen()
+        assert "100%" in fenster.stand.cget("text")
+    finally:
+        fenster.destroy()
+        eltern.destroy()
+
+
+def test_filter_zeigt_nur_ungepflegte(tmp_path, monkeypatch):
+    eltern, fenster, _ = _zuordnungsfenster(tmp_path, monkeypatch)
+    try:
+        fenster.nur_offene.set(True)
+        fenster._fuellen()
+        sichtbar = [fenster.tabelle.item(k)["values"][0]
+                    for k in fenster.tabelle.get_children()]
+        assert sichtbar == ["viel@firma.de"]
+    finally:
+        fenster.destroy()
+        eltern.destroy()

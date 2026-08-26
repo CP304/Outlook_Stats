@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from . import auftrag as auftrag_modul
-from . import pipeline, team_export
+from . import mapping, pipeline, team_export
 from .config import Config
 
 
@@ -43,6 +43,156 @@ def datei_oeffnen(pfad: Path) -> None:
         messagebox.showerror(TITEL, f"Konnte {pfad.name} nicht öffnen:\n{fehler}")
 
 
+
+class ZuordnungsFenster(tk.Toplevel):
+    """Tabelle zum Pflegen der Zuordnungen -- Fachbereiche oder Kategorien.
+
+    Nach Volumen sortiert, weil in der Praxis 15 bis 25 gepflegte Zeilen rund
+    80 % des Volumens abdecken.  Die Spalte 'kumuliert' zeigt, ab wann sich
+    weitere Zeilen nicht mehr lohnen -- man soll aufhoeren duerfen.
+    """
+
+    def __init__(self, eltern, datei: Path, schluessel: str, wert: str,
+                 spalten: list[str], titel: str, vorschlaege: list[str],
+                 auswahlliste: tuple[str, list[str]] | None = None) -> None:
+        super().__init__(eltern)
+        self.title(titel)
+        self.geometry("900x600")
+        self.minsize(700, 460)
+
+        self.datei = Path(datei)
+        self.schluessel = schluessel
+        self.wert = wert
+        self.spalten = spalten
+        self.auswahlliste = auswahlliste
+        self.zeilen = mapping.lesen(self.datei)
+        self.nur_offene = tk.BooleanVar(value=False)
+        self.eingabe = tk.StringVar()
+
+        self._aufbauen(vorschlaege)
+        self._fuellen()
+
+    # ------------------------------------------------------------ Aufbau
+    def _aufbauen(self, vorschlaege: list[str]) -> None:
+        kopf = ttk.Frame(self, padding=(14, 12, 14, 6))
+        kopf.pack(fill="x")
+        ttk.Label(kopf, text=self.title(), font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        ttk.Label(kopf, style="Leise.TLabel", text=(
+            "Zeilen auswählen (Strg oder Umschalt für mehrere), unten den Wert "
+            "eintragen und zuweisen.\nNach Volumen sortiert — die obersten Zeilen "
+            "bringen den meisten Nutzen.")).pack(anchor="w")
+
+        mitte = ttk.Frame(self, padding=(14, 0, 14, 0))
+        mitte.pack(fill="both", expand=True)
+
+        anzeige = [self.schluessel, "Anzeigename", "Volumen", "kumuliert", self.wert]
+        self.tabelle = ttk.Treeview(mitte, columns=anzeige, show="headings",
+                                    selectmode="extended")
+        breiten = {self.schluessel: 300, "Anzeigename": 170, "Volumen": 80,
+                   "kumuliert": 90, self.wert: 190}
+        for name in anzeige:
+            self.tabelle.heading(name, text=name)
+            self.tabelle.column(name, width=breiten.get(name, 120),
+                                anchor="w" if breiten.get(name, 120) > 100 else "e")
+        leiste = ttk.Scrollbar(mitte, command=self.tabelle.yview)
+        self.tabelle.configure(yscrollcommand=leiste.set)
+        self.tabelle.pack(side="left", fill="both", expand=True)
+        leiste.pack(side="right", fill="y")
+        self.tabelle.tag_configure("offen", foreground="#8a6d1f")
+        self.tabelle.bind("<Double-1>", lambda _e: self.feld.focus_set())
+
+        unten = ttk.Frame(self, padding=(14, 10, 14, 6))
+        unten.pack(fill="x")
+        ttk.Label(unten, text=self.wert + ":").pack(side="left")
+        self.feld = ttk.Combobox(unten, textvariable=self.eingabe, width=26,
+                                 values=vorschlaege)
+        self.feld.pack(side="left", padx=8)
+        self.feld.bind("<Return>", lambda _e: self._zuweisen())
+        ttk.Button(unten, text="Zuweisen", command=self._zuweisen).pack(side="left")
+        ttk.Button(unten, text="Leeren", command=self._leeren).pack(side="left", padx=6)
+        ttk.Checkbutton(unten, variable=self.nur_offene, command=self._fuellen,
+                        text="nur ungepflegte anzeigen").pack(side="left", padx=16)
+
+        fuss = ttk.Frame(self, padding=(14, 0, 14, 12))
+        fuss.pack(fill="x")
+        self.stand = ttk.Label(fuss, style="Leise.TLabel", text="")
+        self.stand.pack(side="left")
+        ttk.Button(fuss, text="Schließen", command=self.destroy).pack(side="right")
+        ttk.Button(fuss, text="Speichern", command=self._speichern).pack(
+            side="right", padx=6)
+        ttk.Button(fuss, text="In Excel öffnen",
+                   command=lambda: datei_oeffnen(self.datei)).pack(side="right")
+
+    # ------------------------------------------------------------ Inhalt
+    def _volumen(self, zeile: dict) -> int:
+        for name in ("Nachrichten", "Vorgaenge", "Vorgänge"):
+            try:
+                return int(zeile.get(name) or 0)
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    def _fuellen(self) -> None:
+        self.tabelle.delete(*self.tabelle.get_children())
+        sortiert = sorted(self.zeilen, key=self._volumen, reverse=True)
+        gesamt = sum(self._volumen(z) for z in sortiert) or 1
+        summe = 0
+        for index, zeile in enumerate(sortiert):
+            summe += self._volumen(zeile)
+            gepflegt = str(zeile.get(self.wert, "")).strip()
+            if self.nur_offene.get() and gepflegt:
+                continue
+            self.tabelle.insert(
+                "", "end", iid=str(self.zeilen.index(zeile)),
+                values=(zeile.get(self.schluessel, ""),
+                        zeile.get("Anzeigename", ""),
+                        self._volumen(zeile) or "",
+                        f"{summe / gesamt:.0%}",
+                        gepflegt),
+                tags=() if gepflegt else ("offen",))
+        self._stand_zeigen()
+
+    def _stand_zeigen(self) -> None:
+        gepflegt = sum(1 for z in self.zeilen if str(z.get(self.wert, "")).strip())
+        gesamt_volumen = sum(self._volumen(z) for z in self.zeilen) or 1
+        abgedeckt = sum(self._volumen(z) for z in self.zeilen
+                        if str(z.get(self.wert, "")).strip()) / gesamt_volumen
+        self.stand.configure(text=(
+            f"{gepflegt} von {len(self.zeilen)} Zeilen gepflegt — "
+            f"das deckt {abgedeckt:.0%} des Volumens ab."))
+
+    def _zuweisen(self) -> None:
+        wert = self.eingabe.get().strip()
+        if not wert:
+            messagebox.showinfo(self.title(), "Bitte einen Wert eintragen.")
+            return
+        self._setzen(wert)
+
+    def _leeren(self) -> None:
+        self._setzen("")
+
+    def _setzen(self, wert: str) -> None:
+        markiert = self.tabelle.selection()
+        if not markiert:
+            messagebox.showinfo(self.title(), "Bitte zuerst Zeilen auswählen.")
+            return
+        for kennung in markiert:
+            self.zeilen[int(kennung)][self.wert] = wert
+        self._fuellen()
+
+    def _speichern(self) -> None:
+        try:
+            ziel = mapping.schreiben(self.zeilen, self.spalten, self.datei,
+                                     self.auswahlliste)
+        except Exception as fehler:
+            messagebox.showerror(self.title(), str(fehler))
+            return
+        messagebox.showinfo(self.title(), (
+            f"Gespeichert: {ziel.name}\n\nDie Auswertung rechnet die Zuordnung "
+            f"mit, sobald „Neu berechnen“ gedrückt wird — dafür ist kein "
+            f"weiterer Outlook-Zugriff nötig."))
+
+
 class Fenster(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -55,7 +205,6 @@ class Fenster(tk.Tk):
         self.domain = tk.StringVar()
         self.konzern = tk.StringVar()
         self.monate = tk.IntVar(value=12)
-        self.hypothese = tk.IntVar(value=80)
         self.vollerhebung = tk.BooleanVar(value=False)
         self.signaturen = tk.BooleanVar(value=False)
         self.fremde = tk.BooleanVar(value=False)
@@ -143,16 +292,6 @@ class Fenster(tk.Tk):
         ttk.Label(seite, text="deckt Saison- und Budgetzyklen ab",
                   style="Leise.TLabel").grid(row=2, column=2, sticky="w")
 
-        ttk.Label(seite, text="Vermuteter interner Anteil").grid(
-            row=3, column=0, sticky="w", pady=4)
-        zeile2 = ttk.Frame(seite)
-        zeile2.grid(row=3, column=1, sticky="w", padx=8)
-        ttk.Spinbox(zeile2, from_=0, to=100, width=6, textvariable=self.hypothese).pack(
-            side="left")
-        ttk.Label(zeile2, text=" %").pack(side="left")
-        ttk.Label(seite, text="wird der Messung gegenübergestellt",
-                  style="Leise.TLabel").grid(row=3, column=2, sticky="w")
-
         ttk.Separator(seite).grid(row=4, column=0, columnspan=3, sticky="ew", pady=12)
 
         ttk.Checkbutton(
@@ -190,12 +329,10 @@ class Fenster(tk.Tk):
 
         zeile3 = ttk.Frame(seite)
         zeile3.grid(row=12, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        ttk.Button(zeile3, text="Fachbereiche pflegen",
-                   command=lambda: self._mapping_oeffnen("mapping_personen")).pack(
-            side="left")
-        ttk.Button(zeile3, text="Domainkategorien pflegen",
-                   command=lambda: self._mapping_oeffnen("mapping_domains")).pack(
-            side="left", padx=8)
+        ttk.Button(zeile3, text="Interne Kontakte und Fachbereiche …",
+                   command=self._fachbereiche_pflegen).pack(side="left")
+        ttk.Button(zeile3, text="Externe Domains und Kategorien …",
+                   command=self._kategorien_pflegen).pack(side="left", padx=8)
         return seite
 
     def _reiter_kontakte(self) -> ttk.Frame:
@@ -371,23 +508,21 @@ class Fenster(tk.Tk):
         config = self._config_bauen()
         if config:
             self._starten(auftrag_modul.analyse, config, self._ordner(),
-                          self.hypothese.get() / 100,
-                          beschreibung="Lese Outlook ...")
+                          None, beschreibung="Lese Outlook ...")
 
     def _neu_starten(self) -> None:
         config = self._config_bauen()
         if config:
             self._starten(auftrag_modul.neu_berechnen, config, self._ordner(),
-                          self.hypothese.get() / 100,
-                          beschreibung="Rechne neu ...")
+                          None, beschreibung="Rechne neu ...")
 
     def _demo_starten(self) -> None:
         config = Config.laden(self._ordner() / "config.json")
         config.interne_domains = ["firma.de"]
         config.vollerhebung = self.vollerhebung.get()
         self.domain.set("firma.de")
-        self._starten(auftrag_modul.demo, config, self._ordner(),
-                      self.hypothese.get() / 100, beschreibung="Erzeuge Beispiel ...")
+        self._starten(auftrag_modul.demo, config, self._ordner(), None,
+                      beschreibung="Erzeuge Beispiel ...")
 
     def _kontakte_starten(self) -> None:
         config = self._config_bauen()
@@ -404,14 +539,42 @@ class Fenster(tk.Tk):
             if bericht.exists():
                 datei_oeffnen(bericht)
 
-    def _mapping_oeffnen(self, name: str) -> None:
+    def _mapping_datei(self, name: str) -> Path | None:
         for endung in (".xlsx", ".csv"):
             pfad = self._ordner() / (name + endung)
             if pfad.exists():
-                datei_oeffnen(pfad)
-                return
-        messagebox.showinfo(TITEL, "Die Datei entsteht beim ersten Lauf. "
-                                   "Bitte zuerst eine Analyse ausführen.")
+                return pfad
+        messagebox.showinfo(TITEL, (
+            "Die Zuordnungsdatei entsteht beim ersten Lauf — sie wird aus den "
+            "tatsächlich vorkommenden Kontakten gefüllt.\n\nBitte zuerst eine "
+            "Analyse ausführen (oder „Beispiel ansehen“ zum Ausprobieren)."))
+        return None
+
+    def _bekannte_werte(self, datei: Path, spalte: str) -> list[str]:
+        """Bereits vergebene Werte als Vorschlag -- vermeidet Tippvarianten."""
+        vorhanden = {str(z.get(spalte, "")).strip()
+                     for z in mapping.lesen(datei) if str(z.get(spalte, "")).strip()}
+        return sorted(vorhanden)
+
+    def _fachbereiche_pflegen(self) -> None:
+        datei = self._mapping_datei("mapping_personen")
+        if not datei:
+            return
+        ZuordnungsFenster(
+            self, datei, "E-Mail", "Fachbereich", mapping.SPALTEN_PERSONEN,
+            "Interne Kontakte und Fachbereiche",
+            self._bekannte_werte(datei, "Fachbereich") or
+            ["Einkauf", "Engineering", "Qualität", "Produktion", "Logistik",
+             "Finance", "Vertrieb", "IT", "Funktionspostfach"])
+
+    def _kategorien_pflegen(self) -> None:
+        datei = self._mapping_datei("mapping_domains")
+        if not datei:
+            return
+        ZuordnungsFenster(
+            self, datei, "Domain", "Kategorie", mapping.SPALTEN_DOMAINS,
+            "Externe Domains und Kategorien", mapping.KATEGORIE_VORSCHLAEGE,
+            auswahlliste=("Kategorie", mapping.KATEGORIE_VORSCHLAEGE))
 
     def _ordner_waehlen(self) -> None:
         gewaehlt = filedialog.askdirectory(title="Arbeitsordner wählen")

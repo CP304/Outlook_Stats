@@ -40,6 +40,13 @@ Die Spalte "Anteil kumuliert" zeigt direkt, wann man aufhören kann zu pflegen.
 `mapping_domains.xlsx` analog mit der Spalte `Kategorie` (Vorschlagswerte: Lieferant, Dienstleister,
 Kunde, Behörde, Konzern/verbunden, Sonstiges).
 
+Gepflegt wird in der Oberfläche unter „Interne Kontakte und Fachbereiche“: eine nach Volumen
+sortierte Tabelle mit Mehrfachauswahl, einer Statuszeile („6 von 13 Zeilen gepflegt — das deckt 61 %
+des Volumens ab“) und einem Filter für die noch offenen Zeilen. Ungepflegte Zeilen sind farblich
+abgesetzt. Der Weg über Excel bleibt daneben bestehen.
+
+Die Statuszeile ist der eigentliche Punkt: Sie sagt, wann sich weitere Pflege **nicht** mehr lohnt.
+
 ### Pass 2 — nach optionaler Pflege
 
 Gleicher Aufruf. Das Programm erkennt vorhandene Mapping-Dateien, liest den Cache und rechnet in Sekunden.
