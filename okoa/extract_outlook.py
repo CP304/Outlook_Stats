@@ -219,7 +219,9 @@ def _anhangnamen(item, anzahl: int) -> list[str]:
 
 def _empfaenger_lesen(item, config: Config):
     ids, klassen = [], []
-    n_to = n_cc = n_to_intern = n_to_extern = n_cc_intern = n_cc_extern = 0
+    n_to = n_cc = n_bcc = 0
+    n_to_intern = n_to_extern = n_cc_intern = n_cc_extern = 0
+    n_bcc_intern = n_bcc_extern = 0
     n_listen = 0
     try:
         empfaenger = list(item.Recipients)
@@ -245,14 +247,19 @@ def _empfaenger_lesen(item, config: Config):
             n_cc += 1
             n_cc_intern += klasse in ("intern", "konzern")
             n_cc_extern += klasse == "extern"
+        elif typ == OL_BCC:
+            # BCC ist nur bei selbst gesendeten Nachrichten ueberhaupt sichtbar.
+            # Es wird deshalb getrennt gefuehrt und nicht in die TO-Zahl
+            # geschlagen -- sonst waere jede TO-Kennzahl still verfaelscht.
+            n_bcc += 1
+            n_bcc_intern += klasse in ("intern", "konzern")
+            n_bcc_extern += klasse == "extern"
         else:
-            # BCC wird der Empfaengerzahl zugerechnet, aber nie separat
-            # berichtet -- bei empfangenen Mails ist es prinzipiell unsichtbar
-            # und jede Kennzahl darauf waere systematisch verzerrt.
             n_to += 1
             n_to_intern += klasse in ("intern", "konzern")
             n_to_extern += klasse == "extern"
-    return ids, klassen, n_to, n_cc, n_to_intern, n_to_extern, n_cc_intern, n_cc_extern, n_listen
+    return (ids, klassen, n_to, n_cc, n_bcc, n_to_intern, n_to_extern,
+            n_cc_intern, n_cc_extern, n_bcc_intern, n_bcc_extern, n_listen)
 
 
 def nachricht_lesen(item, config: Config, ordner: str, store: str,
@@ -278,8 +285,9 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
 
     absender = _smtp_aufloesen(item, str(_eigenschaft(item, "SenderEmailAddress", "")),
                                str(_eigenschaft(item, "SenderEmailType", "")))
-    (ids, klassen, n_to, n_cc, n_to_intern, n_to_extern,
-     n_cc_intern, n_cc_extern, n_listen) = _empfaenger_lesen(item, config)
+    (ids, klassen, n_to, n_cc, n_bcc, n_to_intern, n_to_extern,
+     n_cc_intern, n_cc_extern, n_bcc_intern, n_bcc_extern,
+     n_listen) = _empfaenger_lesen(item, config)
 
     try:
         kopfzeilen = str(item.PropertyAccessor.GetProperty(PR_TRANSPORT_MESSAGE_HEADERS))
@@ -293,8 +301,6 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
     betreff = str(_eigenschaft(item, "Subject", ""))
     groesse = int(_eigenschaft(item, "Size", 0) or 0)
     anzahl_anhaenge = _anhangszahl(item)
-    n_bcc = sum(1 for e in (list(item.Recipients) if _hat_empfaenger(item) else [])
-                if _eigenschaft(e, "Type", OL_TO) == OL_BCC)
 
     # Richtung nicht am Ordner festmachen -- Ordner sind unzuverlaessig.
     gesendet = adresse_normalisieren(absender) in eigene_adressen
@@ -311,6 +317,7 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
         n_to=n_to, n_cc=n_cc,
         n_to_intern=n_to_intern, n_to_extern=n_to_extern,
         n_cc_intern=n_cc_intern, n_cc_extern=n_cc_extern,
+        n_bcc_intern=n_bcc_intern, n_bcc_extern=n_bcc_extern,
         n_verteilerlisten=n_listen,
         klasse=nachricht_klassifizieren(absender, message_class, kopfzeilen),
         hat_anhang=anzahl_anhaenge > 0,

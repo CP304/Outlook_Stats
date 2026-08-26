@@ -305,6 +305,7 @@ def alles_berechnen(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
     return {
         "kern": kern_kpis(vorgaenge, nachrichten),
         "koordination": koordinationslast(vorgaenge, nachrichten, config),
+        "verteiler": verteilergroesse(vorgaenge, nachrichten, config, zuordnung),
         "fachbereiche": fachbereiche(vorgaenge, nachrichten, zuordnung or {}),
         "lieferanten": lieferanten(vorgaenge, nachrichten, kategorien),
         "zeit": zeitverlauf(vorgaenge, nachrichten),
@@ -535,4 +536,133 @@ def vollerhebung(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
         "termine": termine(nachrichten),
         "bcc": bcc_nutzung(nachrichten),
         "weiterleitungen": weiterleitungen(nachrichten),
+    }
+
+
+# --------------------------------------------------------- Verteilergroesse
+
+# Groessenklassen fuer Verteiler.  Die Grenzen sind bewusst grob: Der
+# Unterschied zwischen 9 und 11 Empfaengern sagt nichts, der zwischen 3 und 30
+# alles.
+GROESSENKLASSEN = [
+    (1, 1, "1"),
+    (2, 3, "2–3"),
+    (4, 8, "4–8"),
+    (9, 20, "9–20"),
+    (21, 10**9, "über 20"),
+]
+
+
+def _klasse_fuer(anzahl: int) -> str:
+    for unten, oben, name in GROESSENKLASSEN:
+        if unten <= anzahl <= oben:
+            return name
+    return "1"
+
+
+def _feldwerte(nachrichten: list[Nachricht]) -> dict:
+    """Kennzahlen zu TO, CC und BCC fuer eine Menge von Nachrichten."""
+    if not nachrichten:
+        return {"n": 0}
+
+    def kennzahl(werte: list[float]) -> dict:
+        ohne_null = [w for w in werte if w > 0]
+        q1, q3 = _quartile(ohne_null)
+        return {
+            "mittel": _mittel(werte),
+            "mittel_wenn_genutzt": _mittel(ohne_null),
+            "median_wenn_genutzt": _median(ohne_null),
+            "q1": q1, "q3": q3,
+            "max": max(werte) if werte else 0,
+            "anteil_genutzt": _anteil(len(ohne_null), len(werte)),
+        }
+
+    gesamt = [float(n.n_empfaenger) for n in nachrichten]
+    verteilung = Counter(_klasse_fuer(n.n_empfaenger) for n in nachrichten)
+    summe_to = sum(n.n_to for n in nachrichten)
+    summe_cc = sum(n.n_cc for n in nachrichten)
+    summe_bcc = sum(n.n_bcc for n in nachrichten)
+    summe = summe_to + summe_cc + summe_bcc or 1
+
+    return {
+        "n": len(nachrichten),
+        "to": kennzahl([float(n.n_to) for n in nachrichten]),
+        "cc": kennzahl([float(n.n_cc) for n in nachrichten]),
+        "bcc": kennzahl([float(n.n_bcc) for n in nachrichten]),
+        "gesamt": kennzahl(gesamt),
+        # Wie verteilt sich die Empfaengerschaft auf die drei Felder?
+        "anteil_to": summe_to / summe,
+        "anteil_cc": summe_cc / summe,
+        "anteil_bcc": summe_bcc / summe,
+        "groessenklassen": {name: verteilung.get(name, 0)
+                            for _, _, name in GROESSENKLASSEN},
+        "intern_extern": {
+            "to_intern": sum(n.n_to_intern for n in nachrichten),
+            "to_extern": sum(n.n_to_extern for n in nachrichten),
+            "cc_intern": sum(n.n_cc_intern for n in nachrichten),
+            "cc_extern": sum(n.n_cc_extern for n in nachrichten),
+            "bcc_intern": sum(n.n_bcc_intern for n in nachrichten),
+            "bcc_extern": sum(n.n_bcc_extern for n in nachrichten),
+        },
+        "mit_verteilerliste": sum(1 for n in nachrichten if n.n_verteilerlisten),
+    }
+
+
+def verteilergroesse(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
+                     config: Config, zuordnung: dict[str, str] | None = None) -> dict:
+    """Verteilergroesse in TO, CC und BCC -- aufgeschluesselt.
+
+    Drei Aufschluesselungen, weil dieselbe Durchschnittszahl je nach Schnitt
+    etwas anderes bedeutet:
+
+      * nach Vorgangsklasse -- verteilt man intern breiter als nach aussen?
+      * nach Richtung -- streut man selbst, oder wird man bestreut?
+      * nach Fachbereich -- an welcher Schnittstelle entstehen grosse Verteiler?
+
+    BCC ist nur bei selbst gesendeten Nachrichten sichtbar.  Es wird deshalb
+    ausgewiesen, aber ausschliesslich fuer die eigene Sendeseite -- ein
+    Vergleich mit empfangener Kommunikation waere unbehebbar verzerrt.
+    """
+    zuordnung = zuordnung or {}
+    auswertbar = [n for n in nachrichten if n.ist_auswertbar]
+    klasse_je_thread = {v.thread_id: v.klasse for v in vorgaenge}
+
+    nach_klasse: dict[str, list[Nachricht]] = defaultdict(list)
+    for vorgang in vorgaenge:
+        for n in vorgang.nachrichten:
+            if n.ist_auswertbar:
+                nach_klasse[vorgang.klasse].append(n)
+
+    gesendet = [n for n in auswertbar if n.richtung == RICHTUNG_GESENDET]
+    empfangen = [n for n in auswertbar if n.richtung != RICHTUNG_GESENDET]
+
+    nach_fachbereich: dict[str, list[Nachricht]] = defaultdict(list)
+    for n in auswertbar:
+        bereiche = {zuordnung.get(a) for a in n.alle_beteiligten} - {None}
+        for bereich in (bereiche or {"Unbekannt/Sonstige"}):
+            nach_fachbereich[bereich].append(n)
+
+    grenze = config.schwellen.grossverteiler_empfaenger
+    gross = [n for n in auswertbar if n.n_empfaenger > grenze]
+
+    return {
+        "gesamt": _feldwerte(auswertbar),
+        "nach_klasse": {k: _feldwerte(nach_klasse.get(k, [])) for k in KLASSEN},
+        "nach_richtung": {
+            "gesendet": _feldwerte(gesendet),
+            "empfangen": _feldwerte(empfangen),
+        },
+        "nach_fachbereich": {
+            bereich: _feldwerte(liste)
+            for bereich, liste in sorted(nach_fachbereich.items(),
+                                         key=lambda x: -len(x[1]))
+        },
+        "grossverteiler": {
+            "grenze": grenze,
+            "anzahl": len(gross),
+            "anteil": _anteil(len(gross), len(auswertbar)),
+            # Was macht einen grossen Verteiler gross -- viele TO oder viele CC?
+            "davon_durch_cc": _anteil(sum(1 for n in gross if n.n_cc > n.n_to),
+                                      len(gross)),
+        },
     }

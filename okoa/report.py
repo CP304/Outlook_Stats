@@ -17,6 +17,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
+from .metrics import GROESSENKLASSEN
 from .model import VORGANG_EXTERN, VORGANG_GEMISCHT, VORGANG_INTERN
 
 
@@ -272,6 +273,101 @@ nicht die Mailanzahl allein.</p>
 </div>
 <p class="leise">Empfängerzahlen sind eine Untergrenze: Verteilerlisten werden bewusst
 nicht aufgelöst, weil ihr heutiger Mitgliederstand nicht zur Mail von damals passt.</p>
+{_abschnitt_verteiler(kpi)}
+"""
+
+
+def _feldzeile(name: str, werte: dict) -> str:
+    return (f"<tr><td>{_e(name)}</td><td>{_z(werte['mittel'], 2)}</td>"
+            f"<td>{_p(werte['anteil_genutzt'])}</td>"
+            f"<td>{_z(werte['median_wenn_genutzt'])}</td>"
+            f"<td>{_z(werte['q1'])} – {_z(werte['q3'])}</td>"
+            f"<td>{_z(werte['max'], 0)}</td></tr>")
+
+
+def _abschnitt_verteiler(kpi: dict) -> str:
+    """Verteilergröße in TO, CC und BCC, aufgeschlüsselt."""
+    verteiler = kpi.get("verteiler")
+    if not verteiler or not verteiler["gesamt"].get("n"):
+        return ""
+    gesamt = verteiler["gesamt"]
+    gross = verteiler["grossverteiler"]
+    klassen = verteiler["groessenklassen"] if "groessenklassen" in verteiler \
+        else gesamt["groessenklassen"]
+
+    zeilen_felder = "".join([
+        _feldzeile("TO", gesamt["to"]),
+        _feldzeile("CC", gesamt["cc"]),
+        _feldzeile("BCC (nur eigene Sendungen)", gesamt["bcc"]),
+        _feldzeile("alle Empfänger", gesamt["gesamt"]),
+    ])
+
+    zeilen_klasse = "".join(
+        f"<tr><td>{BESCHRIFTUNG[k]}</td><td>{werte['n']}</td>"
+        f"<td>{_z(werte['to']['mittel'], 2)}</td><td>{_z(werte['cc']['mittel'], 2)}</td>"
+        f"<td>{_z(werte['bcc']['mittel'], 2)}</td>"
+        f"<td>{_z(werte['gesamt']['median_wenn_genutzt'])}</td>"
+        f"<td>{_p(werte['anteil_cc'])}</td></tr>"
+        for k, werte in verteiler["nach_klasse"].items() if werte.get("n"))
+
+    richtung = verteiler["nach_richtung"]
+    zeilen_richtung = "".join(
+        f"<tr><td>{_e(name)}</td><td>{werte['n']}</td>"
+        f"<td>{_z(werte['to']['mittel'], 2)}</td><td>{_z(werte['cc']['mittel'], 2)}</td>"
+        f"<td>{_z(werte['bcc']['mittel'], 2)}</td>"
+        f"<td>{_p(werte['anteil_cc'])}</td></tr>"
+        for name, werte in (("selbst gesendet", richtung["gesendet"]),
+                            ("empfangen", richtung["empfangen"])) if werte.get("n"))
+
+    balken = _saeulen_einfach(
+        {i: klassen.get(name, 0) for i, (_, _, name) in enumerate(GROESSENKLASSEN)},
+        [name for _, _, name in GROESSENKLASSEN])
+
+    ie = gesamt["intern_extern"]
+    return f"""
+<h3>Verteilergröße</h3>
+<table>
+  <thead><tr><th>Feld</th><th>Ø je Nachricht</th><th>überhaupt genutzt</th>
+  <th>Median wenn genutzt</th><th>Q1 – Q3</th><th>Maximum</th></tr></thead>
+  <tbody>{zeilen_felder}</tbody>
+</table>
+<p class="leise">„Ø je Nachricht“ rechnet Nachrichten ohne CC mit null mit; „Median wenn
+genutzt“ betrachtet nur die Nachrichten, die das Feld tatsächlich verwenden. Beide
+Zahlen zusammen trennen „selten, dann breit“ von „ständig, aber knapp“.
+Von allen Empfängernennungen entfallen {_p(gesamt['anteil_to'])} auf TO,
+{_p(gesamt['anteil_cc'])} auf CC und {_p(gesamt['anteil_bcc'], 1)} auf BCC.</p>
+
+<figure>{balken}
+<figcaption>Nachrichten nach Empfängerzahl (TO + CC + BCC).</figcaption></figure>
+
+<h4>Nach Vorgangsklasse</h4>
+<table>
+  <thead><tr><th>Klasse</th><th>Nachrichten</th><th>TO Ø</th><th>CC Ø</th>
+  <th>BCC Ø</th><th>Empfänger Median</th><th>CC-Anteil</th></tr></thead>
+  <tbody>{zeilen_klasse}</tbody>
+</table>
+
+<h4>Nach Richtung</h4>
+<table>
+  <thead><tr><th>Richtung</th><th>Nachrichten</th><th>TO Ø</th><th>CC Ø</th>
+  <th>BCC Ø</th><th>CC-Anteil</th></tr></thead>
+  <tbody>{zeilen_richtung}</tbody>
+</table>
+<p class="leise">Streut man selbst breit, oder wird man bestreut? Empfangenes ist
+fremdbestimmt — die eigene Zeile ist die, an der man etwas ändern kann.
+BCC erscheint nur in der Zeile „selbst gesendet“: bei empfangenen Nachrichten ist es
+prinzipiell unsichtbar, ein Vergleich wäre unbehebbar verzerrt.</p>
+
+<div class="kacheln">
+  {_kachel("Große Verteiler", _p(gross["anteil"]),
+           f'mehr als {gross["grenze"]} Empfänger — {gross["anzahl"]} Nachrichten')}
+  {_kachel("davon durch CC getrieben", _p(gross["davon_durch_cc"]),
+           "mehr CC- als TO-Empfänger")}
+  {_kachel("Empfängernennungen intern", str(ie["to_intern"] + ie["cc_intern"] + ie["bcc_intern"]),
+           f'extern {ie["to_extern"] + ie["cc_extern"] + ie["bcc_extern"]}')}
+  {_kachel("Mit Verteilerliste", str(gesamt["mit_verteilerliste"]),
+           "Empfängerzahl dort untererfasst")}
+</div>
 """
 
 
@@ -293,11 +389,22 @@ Nach dem Ausfüllen die Analyse einfach erneut starten.</div>
                    f'zugeordnete Personen. Solange dieser Anteil über '
                    f'{_p(warnschwelle)} liegt, sind die Aussagen dieser Seite '
                    f'nicht tragfähig.</div>')
+    je_bereich = (kpi.get("verteiler") or {}).get("nach_fachbereich", {})
+
+    def verteilerspalten(name: str) -> str:
+        werte = je_bereich.get(name)
+        if not werte or not werte.get("n"):
+            return "<td>—</td><td>—</td><td>—</td>"
+        return (f"<td>{_z(werte['to']['mittel'], 2)}</td>"
+                f"<td>{_z(werte['cc']['mittel'], 2)}</td>"
+                f"<td>{_p(werte['anteil_cc'])}</td>")
+
     zeilen = "".join(
         f"<tr><td>{_e(z['fachbereich'])}</td><td>{z['vorgaenge']}</td>"
         f"<td>{_p(z['anteil_vorgaenge'], 1)}</td><td>{z['nachrichten']}</td>"
         f"<td>{_p(z['anteil_nachrichten'], 1)}</td>"
-        f"<td>{_z(z['vorgangsgroesse_median'])}</td></tr>"
+        f"<td>{_z(z['vorgangsgroesse_median'])}</td>"
+        f"{verteilerspalten(z['fachbereich'])}</tr>"
         for z in fb["zeilen"]
     )
     return f"""
@@ -305,12 +412,15 @@ Nach dem Ausfüllen die Analyse einfach erneut starten.</div>
 {warnung}
 <table>
   <thead><tr><th>Fachbereich</th><th>Vorgänge</th><th>Anteil</th>
-  <th>Nachrichten</th><th>Anteil</th><th>Vorgangsgröße Median</th></tr></thead>
+  <th>Nachrichten</th><th>Anteil</th><th>Vorgangsgröße Median</th>
+  <th>TO Ø</th><th>CC Ø</th><th>CC-Anteil</th></tr></thead>
   <tbody>{zeilen}</tbody>
 </table>
 <p class="leise">Ein Vorgang zählt bei jedem beteiligten Fachbereich — die Summe der
-Anteile ergibt daher mehr als 100 %. Die Spalte „Vorgangsgröße“ zeigt, mit wem
-Abstimmung aufwendig ist.</p>
+Anteile ergibt daher mehr als 100 %. „Vorgangsgröße“ zeigt, mit wem Abstimmung
+aufwendig ist; die drei rechten Spalten zeigen, an welcher Schnittstelle breit
+verteilt wird. Ein hoher CC-Anteil bei niedriger Vorgangsgröße heißt: Man wird
+informiert, nicht beteiligt.</p>
 """
 
 

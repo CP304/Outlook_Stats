@@ -93,6 +93,24 @@ Absolutwerte.
 Alle Vorgänge, deren erste Nachricht vor dem Fenster liegt, werden markiert (`randvorgang`) und aus
 Dauer- und Tiefenkennzahlen ausgeschlossen, weil sie systematisch abgeschnitten sind.
 
+## Verteilergröße: zwei Zahlen, nicht eine
+
+Für TO, CC und BCC werden je zwei Kennzahlen berichtet:
+
+- **Ø je Nachricht** — rechnet Nachrichten ohne CC mit null mit
+- **Median wenn genutzt** — betrachtet nur die Nachrichten, die das Feld verwenden
+
+Erst zusammen trennen sie zwei völlig verschiedene Muster, die derselbe Mittelwert erzeugt:
+*selten, dann breit* (ein Rundmail an 30 Personen im Monat) und *ständig, aber knapp*
+(jede Mail mit zwei Leuten in CC). Das erste ist ein Informationsformat, das zweite eine Kultur.
+
+Ergänzend: **wodurch** ein großer Verteiler groß wird. Ein Verteiler mit mehr CC- als TO-Empfängern
+bedeutet, dass die Mehrheit der Beteiligten nicht adressiert, sondern informiert wird.
+
+BCC steht nur für selbst gesendete Nachrichten. Bei empfangenen ist es prinzipiell unsichtbar —
+es wird deshalb getrennt geführt und niemals in die TO-Zahl geschlagen, sonst wäre jede TO-Kennzahl
+still verfälscht.
+
 ## Was nicht gemacht wird
 
 - **Keine Gewichtung nach "Wichtigkeit"** — jede Gewichtung wäre eine unbelegte Annahme

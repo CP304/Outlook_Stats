@@ -58,7 +58,11 @@ def postfach_erzeugen(
         start = beginn + timedelta(seconds=zufall.randint(0, int((ende - beginn).total_seconds())))
         conv = f"CONV{vorgang_nr:05d}"
         betreff_hash = f"HASH{vorgang_nr:05d}"
-        interne_partner = zufall.sample(INTERNE, zufall.randint(1, 4))
+        # Jeder zehnte Vorgang laeuft ueber einen grossen Verteiler -- ohne die
+        # bleibt die Auswertung der Verteilergroesse im Beispiel leer.
+        breit = zufall.random() < 0.10
+        interne_partner = zufall.sample(
+            INTERNE, zufall.randint(6, len(INTERNE)) if breit else zufall.randint(1, 4))
         extern_adresse = f"kontakt@{zufall.choice(EXTERNE_DOMAINS)}"
 
         zeitpunkt = start
@@ -89,6 +93,10 @@ def postfach_erzeugen(
             namen = [f"{zufall.choice(DATEINAMEN)}.{zufall.choice(ENDUNGEN)}"
                      for _ in range(anzahl_anhaenge)]
             n_cc = zufall.randint(0, 2) if rein_intern else 0
+            if breit and rein_intern:
+                # Bei Grossverteilern steht die Mehrheit im CC, nicht im TO.
+                n_cc = max(n_cc, len(empfaenger) - zufall.randint(1, 2))
+            n_bcc = 1 if (gesendet and zufall.random() < 0.05) else 0
             n_to = max(1, len(empfaenger) - n_cc)
             laufend += 1
             nachrichten.append(Nachricht(
@@ -112,7 +120,8 @@ def postfach_erzeugen(
                 anhangnamen=namen,
                 groesse=zufall.randint(3_000, 40_000) + anzahl_anhaenge * 250_000,
                 betreff=f"{zufall.choice(BETREFFE)} {vorgang_nr:04d}",
-                n_bcc=1 if (gesendet and zufall.random() < 0.05) else 0,
+                n_bcc=n_bcc,
+                n_bcc_intern=n_bcc,
                 ist_antwort=runde > 0,
                 ist_weiterleitung=runde > 0 and zufall.random() < 0.15,
                 ordner="Posteingang" if not gesendet else "Gesendete Elemente",

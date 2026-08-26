@@ -76,7 +76,8 @@ automatisierter Absender ist Voraussetzung (Kapitel 03).
 | KPI | Definition | Wofür |
 |---|---|---|
 | CC-Quote intern | Anteil interner Nachrichten mit ≥1 CC; Ø CC-Empfänger | Indikator für Absicherungs- und Informationskultur |
-| Großverteiler | Anteil interner Nachrichten mit >8 Empfängern | Streuverluste, "alle informieren statt einen fragen" |
+| Großverteiler | Anteil Nachrichten über der Empfängerschwelle, plus: wird die Größe durch TO oder durch CC getrieben | Streuverluste, "alle informieren statt einen fragen" |
+| Verteilergröße | Ø und Median je Feld (TO/CC/BCC), aufgeschlüsselt nach Vorgangsklasse, Richtung und Fachbereich | wo breit verteilt wird — und ob man selbst streut oder bestreut wird |
 | Langläufer | Anteil Vorgänge mit >5 bzw. >10 Nachrichten, nach Klasse | wo Abstimmung entgleist |
 | Vorgangsdauer | Median Zeit erste bis letzte Nachricht, nach Klasse | Durchlaufzeit von Abstimmung |
 | Fachbereichsvolumen | Vorgänge **und** Nachrichten je Fachbereichslabel | wohin die interne Last fließt |

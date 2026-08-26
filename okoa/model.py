@@ -51,6 +51,9 @@ class Nachricht:
     n_to_extern: int = 0
     n_cc_intern: int = 0
     n_cc_extern: int = 0
+    n_bcc: int = 0
+    n_bcc_intern: int = 0
+    n_bcc_extern: int = 0
     n_verteilerlisten: int = 0
     klasse: str = NORMAL
     hat_anhang: bool = False
@@ -59,7 +62,6 @@ class Nachricht:
     ordner: str = ""
     store: str = ""
     # Nur bei Vollerhebung gefuellt.
-    n_bcc: int = 0
     groesse: int = 0
     n_anhaenge: int = 0
     anhangnamen: list[str] = field(default_factory=list)
@@ -74,7 +76,12 @@ class Nachricht:
     # ------------------------------------------------------------ abgeleitet
     @property
     def n_empfaenger(self) -> int:
-        return self.n_to + self.n_cc
+        """Alle Empfaenger, BCC eingeschlossen.
+
+        BCC ist nur bei eigenen Sendungen sichtbar; bei empfangenen Nachrichten
+        ist die Zahl deshalb notwendig eine Untergrenze.
+        """
+        return self.n_to + self.n_cc + self.n_bcc
 
     @property
     def hat_externen_empfaenger(self) -> bool:
@@ -95,9 +102,10 @@ class Nachricht:
 CACHE_SPALTEN = [
     "msg_hash", "zeitstempel", "richtung", "absender_id", "absender_klasse",
     "absender_domain", "empfaenger_ids", "empfaenger_klassen",
-    "n_to", "n_cc", "n_to_intern", "n_to_extern", "n_cc_intern", "n_cc_extern",
+    "n_to", "n_cc", "n_bcc", "n_to_intern", "n_to_extern", "n_cc_intern",
+    "n_cc_extern", "n_bcc_intern", "n_bcc_extern",
     "n_verteilerlisten", "klasse", "hat_anhang", "ist_antwort", "ist_weiterleitung",
-    "ordner", "store", "n_bcc", "groesse", "n_anhaenge", "anhangnamen", "betreff",
+    "ordner", "store", "groesse", "n_anhaenge", "anhangnamen", "betreff",
     "thread_id_conv", "thread_id_fallback",
 ]
 
