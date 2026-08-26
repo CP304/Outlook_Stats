@@ -14,7 +14,7 @@ from datetime import datetime
 
 from .config import Config
 from .model import (
-    EXTERN, KONZERN, NORMAL, RICHTUNG_GESENDET, UNAUFGELOEST,
+    EXTERN, INTERN, KONZERN, NORMAL, RICHTUNG_GESENDET, TERMIN, UNAUFGELOEST,
     VORGANG_EXTERN, VORGANG_GEMISCHT, VORGANG_INTERN, Nachricht, Vorgang,
 )
 from .normalize import domain_von
@@ -308,4 +308,231 @@ def alles_berechnen(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
         "fachbereiche": fachbereiche(vorgaenge, nachrichten, zuordnung or {}),
         "lieferanten": lieferanten(vorgaenge, nachrichten, kategorien),
         "zeit": zeitverlauf(vorgaenge, nachrichten),
+    }
+
+
+# =====================================================================
+#  Vollerhebung -- Auswertungen, die ueber die Kern-KPIs hinausgehen.
+#  Sie sind aussagekraeftig, aber methodisch angreifbar; im Report sind
+#  sie als explorativ gekennzeichnet und gehen nie in den Teamexport ein.
+# =====================================================================
+
+def antwortzeiten(vorgaenge: list[Vorgang], config: Config,
+                  eigene_adressen: set[str] | None = None) -> dict:
+    """Zeit bis zur Antwort, getrennt nach Klasse und Richtung.
+
+    Gezaehlt wird nur der Sprecherwechsel innerhalb eines Vorgangs: zwei
+    Nachrichten derselben Person hintereinander sind Nachfassen, keine Antwort.
+    Spannen ueber der Obergrenze fallen heraus -- nach zwei Wochen ist eine
+    Nachricht kein Reaktions-, sondern ein neuer Anlauf.
+    """
+    grenze = config.schwellen.max_antwortzeit_stunden
+    eigene = eigene_adressen or set()
+    spannen: dict[str, list[float]] = defaultdict(list)
+
+    for vorgang in vorgaenge:
+        auswertbar = [n for n in vorgang.nachrichten if n.ist_auswertbar]
+        for vorher, nachher in zip(auswertbar, auswertbar[1:]):
+            if vorher.absender_id == nachher.absender_id:
+                continue
+            stunden = (nachher.zeitstempel - vorher.zeitstempel).total_seconds() / 3600
+            if not 0 <= stunden <= grenze:
+                continue
+            spannen[vorgang.klasse].append(stunden)
+            if eigene:
+                richtung = ("von_mir" if nachher.absender_id in eigene
+                            else "an_mich" if vorher.absender_id in eigene else None)
+                if richtung:
+                    spannen[richtung].append(stunden)
+
+    ergebnis = {}
+    for schluessel, werte in spannen.items():
+        q1, q3 = _quartile(werte)
+        ergebnis[schluessel] = {
+            "median_stunden": _median(werte),
+            "q1": q1, "q3": q3, "n": len(werte),
+            "anteil_unter_4h": _anteil(sum(1 for w in werte if w <= 4), len(werte)),
+            "anteil_ueber_48h": _anteil(sum(1 for w in werte if w > 48), len(werte)),
+        }
+    return ergebnis
+
+
+def arbeitszeitmuster(nachrichten: list[Nachricht], config: Config) -> dict:
+    """Wann gearbeitet wird -- bezogen auf selbst gesendete Nachrichten.
+
+    Empfangene Mails sagen nichts ueber die eigene Arbeitszeit, nur ueber die
+    der anderen.  Deshalb zaehlt hier nur, was man selbst verschickt hat.
+    """
+    beginn = config.schwellen.arbeitsbeginn_stunde
+    ende = config.schwellen.arbeitsende_stunde
+    gesendet = [n for n in nachrichten
+                if n.ist_auswertbar and n.richtung == RICHTUNG_GESENDET]
+    if not gesendet:
+        return {"n": 0}
+
+    ausserhalb = [n for n in gesendet
+                  if not (beginn <= n.zeitstempel.hour < ende)]
+    wochenende = [n for n in gesendet if n.zeitstempel.weekday() >= 5]
+    return {
+        "n": len(gesendet),
+        "anteil_ausserhalb": _anteil(len(ausserhalb), len(gesendet)),
+        "anteil_wochenende": _anteil(len(wochenende), len(gesendet)),
+        "anteil_vor_beginn": _anteil(
+            sum(1 for n in gesendet if n.zeitstempel.hour < beginn), len(gesendet)),
+        "anteil_nach_ende": _anteil(
+            sum(1 for n in gesendet if n.zeitstempel.hour >= ende), len(gesendet)),
+        "fenster": (beginn, ende),
+    }
+
+
+def netzwerk(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
+             zuordnung: dict[str, str] | None = None,
+             eigene_adressen: set[str] | None = None, top: int = 15) -> dict:
+    """Wichtigste Gegenueber und wie stark sich Kommunikation auf sie ballt."""
+    zuordnung = zuordnung or {}
+    eigene = eigene_adressen or set()
+
+    volumen: Counter = Counter()
+    threads_je: dict[str, set[str]] = defaultdict(set)
+    partner_je: dict[str, set[str]] = defaultdict(set)
+    klasse_je: dict[str, str] = {}
+
+    for vorgang in vorgaenge:
+        for n in vorgang.nachrichten:
+            if not n.ist_auswertbar:
+                continue
+            beteiligte = [(a, k) for a, k in
+                          zip([n.absender_id, *n.empfaenger_ids],
+                              [n.absender_klasse, *n.empfaenger_klassen])
+                          if a and a not in eigene]
+            for adresse, klasse in beteiligte:
+                volumen[adresse] += 1
+                threads_je[adresse].add(vorgang.thread_id)
+                klasse_je[adresse] = klasse
+                # Grad: mit wie vielen anderen taucht diese Person zusammen auf.
+                partner_je[adresse] |= {a for a, _ in beteiligte if a != adresse}
+
+    gesamt = sum(volumen.values()) or 1
+    anteile = sorted((v / gesamt for v in volumen.values()), reverse=True)
+
+    def zeilen(nur_klasse: str) -> list[dict]:
+        gefiltert = [(a, v) for a, v in volumen.most_common()
+                     if klasse_je.get(a) == nur_klasse]
+        return [{
+            "adresse": a,
+            "fachbereich": zuordnung.get(a, "Unbekannt/Sonstige"),
+            "nachrichten": v,
+            "vorgaenge": len(threads_je[a]),
+            "grad": len(partner_je[a]),
+            "anteil": v / gesamt,
+        } for a, v in gefiltert[:top]]
+
+    return {
+        "top_intern": zeilen(INTERN),
+        "top_extern": zeilen(EXTERN),
+        "partner_gesamt": len(volumen),
+        # Wie stark haengt die Kommunikation an wenigen Personen?
+        "anteil_top5": sum(anteile[:5]),
+        "anteil_top10": sum(anteile[:10]),
+        "gini": _gini(list(volumen.values())),
+    }
+
+
+def _gini(werte: list[int]) -> float:
+    """0 = gleichmaessig verteilt, 1 = alles haengt an einer Person."""
+    if not werte or sum(werte) == 0:
+        return 0.0
+    sortiert = sorted(werte)
+    n = len(sortiert)
+    summe = sum((2 * i - n + 1) * w for i, w in enumerate(sortiert))
+    return summe / (n * sum(sortiert))
+
+
+def anhaenge(nachrichten: list[Nachricht]) -> dict:
+    """Anhaenge und Dateitypen.
+
+    Die Groesse steht bewusst nur hier und wird nie als Aufwandsmass benutzt --
+    sie misst Dateianhaenge, nicht Arbeit.
+    """
+    auswertbar = [n for n in nachrichten if n.ist_auswertbar]
+    if not auswertbar:
+        return {"n": 0}
+    mit = [n for n in auswertbar if n.n_anhaenge or n.hat_anhang]
+    endungen: Counter = Counter()
+    for n in auswertbar:
+        for name in n.anhangnamen:
+            if "." in name:
+                endungen[name.rsplit(".", 1)[1].lower()[:8]] += 1
+    groessen = [n.groesse for n in auswertbar if n.groesse]
+    return {
+        "n": len(auswertbar),
+        "anteil_mit_anhang": _anteil(len(mit), len(auswertbar)),
+        "anhaenge_je_nachricht": _mittel([float(n.n_anhaenge) for n in mit]),
+        "top_dateitypen": endungen.most_common(12),
+        "groesse_median_kb": _median([g / 1024 for g in groessen]),
+        "volumen_gesamt_mb": sum(groessen) / (1024 * 1024) if groessen else 0.0,
+    }
+
+
+def termine(nachrichten: list[Nachricht]) -> dict:
+    """Terminobjekte -- getrennt gefuehrt, nie als Mail gezaehlt.
+
+    Koordinationslast steckt primaer in Meetings.  Ohne Kalenderdaten ist das
+    hier nur ein Abbild der Einladungen, aber es ist der erste Hinweis darauf,
+    wie viel Abstimmung ueberhaupt neben den Mails laeuft.
+    """
+    objekte = [n for n in nachrichten if n.klasse == TERMIN]
+    if not objekte:
+        return {"n": 0}
+    extern = [n for n in objekte if n.hat_externen_empfaenger
+              or n.absender_klasse == EXTERN]
+    return {
+        "n": len(objekte),
+        "anteil_extern": _anteil(len(extern), len(objekte)),
+        "organisatoren": len({n.absender_id for n in objekte}),
+        "teilnehmer_mittel": _mittel([float(n.n_empfaenger) for n in objekte]),
+    }
+
+
+def bcc_nutzung(nachrichten: list[Nachricht]) -> dict:
+    """BCC -- nur bei selbst gesendeten Nachrichten ueberhaupt sichtbar.
+
+    Deshalb ausdruecklich als eigene Kennzahl und nicht in den Empfaengerzahlen
+    versteckt: Ein Vergleich mit empfangener Kommunikation waere sinnlos.
+    """
+    gesendet = [n for n in nachrichten
+                if n.ist_auswertbar and n.richtung == RICHTUNG_GESENDET]
+    mit = [n for n in gesendet if n.n_bcc]
+    return {
+        "n_gesendet": len(gesendet),
+        "anteil_mit_bcc": _anteil(len(mit), len(gesendet)),
+        "bcc_empfaenger_mittel": _mittel([float(n.n_bcc) for n in mit]),
+    }
+
+
+def weiterleitungen(nachrichten: list[Nachricht]) -> dict:
+    """Anteil Weiterleitungen -- Indikator fuer Durchreichen statt Entscheiden."""
+    intern = [n for n in nachrichten
+              if n.ist_auswertbar and not n.hat_externen_empfaenger]
+    return {
+        "n_intern": len(intern),
+        "anteil_weitergeleitet": _anteil(
+            sum(1 for n in intern if n.ist_weiterleitung), len(intern)),
+        "anteil_antworten": _anteil(
+            sum(1 for n in intern if n.ist_antwort), len(intern)),
+    }
+
+
+def vollerhebung(vorgaenge: list[Vorgang], nachrichten: list[Nachricht],
+                 config: Config, zuordnung: dict[str, str] | None = None,
+                 eigene_adressen: set[str] | None = None) -> dict:
+    """Alle zusaetzlichen Auswertungen in einem Rutsch."""
+    return {
+        "antwortzeiten": antwortzeiten(vorgaenge, config, eigene_adressen),
+        "arbeitszeit": arbeitszeitmuster(nachrichten, config),
+        "netzwerk": netzwerk(vorgaenge, nachrichten, zuordnung, eigene_adressen),
+        "anhaenge": anhaenge(nachrichten),
+        "termine": termine(nachrichten),
+        "bcc": bcc_nutzung(nachrichten),
+        "weiterleitungen": weiterleitungen(nachrichten),
     }

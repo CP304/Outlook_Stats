@@ -21,7 +21,8 @@ from .model import (
 from .kontakte import Beleg
 from .normalize import (
     adresse_klassifizieren, adresse_normalisieren, betreff_hashen,
-    duplikat_schluessel, ist_antwort_betreff, ist_x500, nachricht_klassifizieren,
+    duplikat_schluessel, ist_antwort_betreff, ist_weiterleitung_betreff, ist_x500,
+    nachricht_klassifizieren,
 )
 from .signaturen import firma_kandidat, funktion_kandidat, telefon_kandidaten
 
@@ -138,6 +139,13 @@ def ordner_sammeln(namespace, config: Config) -> list:
 
 # ---------------------------------------------------------- Nachrichten
 
+def _hat_empfaenger(item) -> bool:
+    try:
+        return item.Recipients is not None
+    except Exception:
+        return False
+
+
 def _signaturteil(item) -> str:
     """Liest NUR das Ende des Mailtexts, fuer die Firmenerkennung.
 
@@ -192,11 +200,21 @@ def _kontaktbelege(item, nachricht: Nachricht, mit_signaturen: bool) -> list[Bel
 
 
 def _anhangszahl(item) -> int:
-    """Nur die Anzahl -- Anhangnamen werden bewusst nicht gelesen."""
     try:
         return int(item.Attachments.Count)
     except Exception:
         return 0
+
+
+def _anhangnamen(item, anzahl: int) -> list[str]:
+    """Nur bei Vollerhebung -- sonst bleibt es bei der blossen Anzahl."""
+    namen = []
+    for i in range(1, min(anzahl, 25) + 1):
+        try:
+            namen.append(str(item.Attachments.Item(i).FileName))
+        except Exception:
+            continue
+    return namen
 
 
 def _empfaenger_lesen(item, config: Config):
@@ -239,6 +257,11 @@ def _empfaenger_lesen(item, config: Config):
 
 def nachricht_lesen(item, config: Config, ordner: str, store: str,
                     eigene_adressen: set[str]) -> Nachricht | None:
+    """Metadaten einer Nachricht.
+
+    Bei config.vollerhebung kommen Betreff, Anhangnamen, Groesse und die
+    BCC-Zahl dazu.  Fuer die eigene Auswertung gedacht.
+    """
     message_class = str(_eigenschaft(item, "MessageClass", ""))
     if message_class.lower().startswith(("report.", "ipm.task", "ipm.contact",
                                          "ipm.activity", "ipm.stickynote")):
@@ -269,6 +292,9 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
 
     betreff = str(_eigenschaft(item, "Subject", ""))
     groesse = int(_eigenschaft(item, "Size", 0) or 0)
+    anzahl_anhaenge = _anhangszahl(item)
+    n_bcc = sum(1 for e in (list(item.Recipients) if _hat_empfaenger(item) else [])
+                if _eigenschaft(e, "Type", OL_TO) == OL_BCC)
 
     # Richtung nicht am Ordner festmachen -- Ordner sind unzuverlaessig.
     gesendet = adresse_normalisieren(absender) in eigene_adressen
@@ -287,10 +313,17 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
         n_cc_intern=n_cc_intern, n_cc_extern=n_cc_extern,
         n_verteilerlisten=n_listen,
         klasse=nachricht_klassifizieren(absender, message_class, kopfzeilen),
-        hat_anhang=_anhangszahl(item) > 0,
+        hat_anhang=anzahl_anhaenge > 0,
         ist_antwort=ist_antwort_betreff(betreff),
+        ist_weiterleitung=ist_weiterleitung_betreff(betreff),
         ordner=ordner,
         store=store,
+        n_bcc=n_bcc,
+        groesse=groesse if config.vollerhebung else 0,
+        n_anhaenge=anzahl_anhaenge,
+        anhangnamen=(_anhangnamen(item, anzahl_anhaenge)
+                     if config.vollerhebung else []),
+        betreff=betreff if config.vollerhebung else "",
         conversation_id=str(_eigenschaft(item, "ConversationID", "")),
         # Der Betreff wird gehasht und nie gespeichert.
         betreff_hash=betreff_hashen(betreff),

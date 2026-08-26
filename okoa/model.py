@@ -55,8 +55,15 @@ class Nachricht:
     klasse: str = NORMAL
     hat_anhang: bool = False
     ist_antwort: bool = False
+    ist_weiterleitung: bool = False
     ordner: str = ""
     store: str = ""
+    # Nur bei Vollerhebung gefuellt.
+    n_bcc: int = 0
+    groesse: int = 0
+    n_anhaenge: int = 0
+    anhangnamen: list[str] = field(default_factory=list)
+    betreff: str = ""
     # Nur zur Vorgangsbildung, wird nicht in die Zwischendatei geschrieben.
     conversation_id: str = ""
     betreff_hash: str = ""
@@ -89,7 +96,8 @@ CACHE_SPALTEN = [
     "msg_hash", "zeitstempel", "richtung", "absender_id", "absender_klasse",
     "absender_domain", "empfaenger_ids", "empfaenger_klassen",
     "n_to", "n_cc", "n_to_intern", "n_to_extern", "n_cc_intern", "n_cc_extern",
-    "n_verteilerlisten", "klasse", "hat_anhang", "ist_antwort", "ordner", "store",
+    "n_verteilerlisten", "klasse", "hat_anhang", "ist_antwort", "ist_weiterleitung",
+    "ordner", "store", "n_bcc", "groesse", "n_anhaenge", "anhangnamen", "betreff",
     "thread_id_conv", "thread_id_fallback",
 ]
 
@@ -105,8 +113,9 @@ def cache_schreiben(nachrichten: list[Nachricht], pfad: Path | str) -> None:
             zeile["zeitstempel"] = n.zeitstempel.isoformat()
             zeile["empfaenger_ids"] = "|".join(n.empfaenger_ids)
             zeile["empfaenger_klassen"] = "|".join(n.empfaenger_klassen)
-            zeile["hat_anhang"] = "1" if n.hat_anhang else "0"
-            zeile["ist_antwort"] = "1" if n.ist_antwort else "0"
+            zeile["anhangnamen"] = "|".join(n.anhangnamen)
+            for flagge in ("hat_anhang", "ist_antwort", "ist_weiterleitung"):
+                zeile[flagge] = "1" if getattr(n, flagge) else "0"
             schreiber.writerow(zeile)
 
 
@@ -119,8 +128,9 @@ def cache_lesen(pfad: Path | str) -> list[Nachricht]:
             werte["zeitstempel"] = datetime.fromisoformat(werte["zeitstempel"])
             werte["empfaenger_ids"] = [x for x in werte["empfaenger_ids"].split("|") if x]
             werte["empfaenger_klassen"] = [x for x in werte["empfaenger_klassen"].split("|") if x]
-            werte["hat_anhang"] = werte["hat_anhang"] == "1"
-            werte["ist_antwort"] = werte["ist_antwort"] == "1"
+            werte["anhangnamen"] = [x for x in werte.get("anhangnamen", "").split("|") if x]
+            for flagge in ("hat_anhang", "ist_antwort", "ist_weiterleitung"):
+                werte[flagge] = werte.get(flagge) == "1"
             for name in ganzzahlen:
                 if name in werte:
                     werte[name] = int(werte[name])

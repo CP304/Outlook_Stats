@@ -128,6 +128,18 @@ def ist_antwort_betreff(betreff: str | None) -> bool:
     return bool(ANTWORT_PRAEFIXE.match(ohne_system))
 
 
+WEITERLEITUNG_PRAEFIXE = re.compile(
+    r"^\s*(?:(?:fw|fwd|wg|weitergeleitet|tr)\s*(?:\[\d+\])?\s*:\s*)", re.IGNORECASE)
+
+
+def ist_weiterleitung_betreff(betreff: str | None) -> bool:
+    """Durchreichen statt Entscheiden -- ein brauchbarer Nebenindikator."""
+    if not betreff:
+        return False
+    ohne_system = SYSTEM_ZUSATZ.sub("", unicodedata.normalize("NFKC", betreff))
+    return bool(WEITERLEITUNG_PRAEFIXE.match(ohne_system))
+
+
 def nachricht_klassifizieren(absender: str, message_class: str, kopfzeilen: str = "") -> str:
     """normal / automatisiert / termin.
 

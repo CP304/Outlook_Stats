@@ -102,12 +102,16 @@ und **nie** als Bewertungsgrundlage verwenden.
 - **Neue vs. wiederkehrende externe Domains** — brauchbarer Indikator für Marktscreening, aber stark
   abhängig vom Beobachtungsfenster.
 
+> **Hinweis zur Vollerhebung:** Die Kennzahlen der Ebene 3 werden mit `--alles` tatsächlich
+> gerechnet und im Report ausgewiesen — siehe [Kapitel 11](11-vollerhebung.md). Ihre Einordnung
+> als explorativ bleibt davon unberührt.
+
 ## Ebene 4 — Ausdrücklich nicht empfohlen
 
 | Metrik | Warum nicht |
 |---|---|
-| Mailgröße / Anhangsgröße als Aufwandsproxy | misst Dateianhänge, nicht Arbeit. Ein 12-MB-PDF ist kein Aufwand, ein Dreizeiler kann Tage gekostet haben |
-| BCC-Auswertung | im eigenen Postfach nur bei selbst gesendeten Mails sichtbar, bei empfangenen prinzipiell nicht — systematisch und unbehebbar verzerrt |
+| Mailgröße / Anhangsgröße als Aufwandsproxy | misst Dateianhänge, nicht Arbeit. Ein 12-MB-PDF ist kein Aufwand, ein Dreizeiler kann Tage gekostet haben. Bei Vollerhebung wird sie erhoben und ausgewiesen — aber nie als Aufwandsmaß verwendet |
+| BCC im Vergleich mit empfangener Kommunikation | im eigenen Postfach nur bei selbst gesendeten Mails sichtbar — ein Vergleich wäre unbehebbar verzerrt. Als reine Kennzahl über eigene Sendungen ist BCC dagegen sauber und wird bei Vollerhebung ausgewiesen |
 | Antwortzeit als Leistungs- oder Belastungsmaß | misst Erreichbarkeit, nicht Leistung; personenbezogen zudem mitbestimmungspflichtig |
 | Absolute Mailanzahl je Person als Ranking | erzeugt genau die Fehlsteuerung, die man untersuchen wollte; wer viel mailt, arbeitet nicht viel |
 | Anhangnamen | häufig vertraulich (Preise, Vertragsentwürfe, Namen), geringer analytischer Mehrwert |

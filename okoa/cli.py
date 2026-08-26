@@ -34,6 +34,8 @@ def _konfiguration(args, ordner: Path) -> Config:
         config.zeitraum_monate = args.monate
     if getattr(args, "fremde_postfaecher", False):
         config.fremde_postfaecher_einbeziehen = True
+    if getattr(args, "alles", False):
+        config.vollerhebung = True
     return config
 
 
@@ -84,6 +86,9 @@ def befehl_analyse(args) -> int:
 
     print(f"  Lese Outlook (Zeitraum: letzte {config.zeitraum_monate} Monate) ...")
     print("  Es wird ausschließlich gelesen; am Postfach wird nichts verändert.")
+    if config.vollerhebung:
+        print("  Vollerhebung: Betreff, Anhangnamen, Größe und BCC werden mit")
+        print("  erfasst; zusätzlich Antwortzeiten, Arbeitszeitmuster und Netzwerk.")
     try:
         nachrichten, berichte = auslesen(config, fortschritt=lambda t: print(f"    {t}"))
     except OutlookNichtVerfuegbar as fehler:
@@ -95,7 +100,8 @@ def befehl_analyse(args) -> int:
     ergebnis = pipeline.auswerten(
         nachrichten, config, ordner,
         kontext={"stores": berichte["stores"],
-                 "ausgeschlossene_ordner": config.ordner_ausschluss},
+                 "ausgeschlossene_ordner": config.ordner_ausschluss,
+                 "eigene_adressen": berichte.get("eigene_adressen", [])},
         hypothese=args.hypothese,
     )
     _abschluss(ergebnis, ordner, teilen_anbieten=not args.ohne_teilen)
@@ -118,7 +124,7 @@ def befehl_demo(args) -> int:
 
     ordner = Path(args.ordner)
     ordner.mkdir(parents=True, exist_ok=True)
-    config = Config(interne_domains=["firma.de"])
+    config = Config(interne_domains=["firma.de"], vollerhebung=args.alles)
     config.speichern(ordner / DATEI_CONFIG)
     print("  Erzeuge Beispieldaten (kein Outlook, keine echten Mails) ...")
     nachrichten = postfach_erzeugen(args.vorgaenge)
@@ -308,6 +314,11 @@ def parser_bauen() -> argparse.ArgumentParser:
                            help="vermuteter interner Anteil für den Vergleich (Vorgabe: 0.80)")
             p.add_argument("--ohne-teilen", action="store_true",
                            help="am Ende nicht nach dem Teamexport fragen")
+            p.add_argument("--alles", action="store_true",
+                           help="Vollerhebung: erfasst zusätzlich Betreff, "
+                                "Anhangnamen, Größe und BCC und rechnet "
+                                "Antwortzeiten, Arbeitszeitmuster und Netzwerk. "
+                                "Für das eigene Postfach gedacht.")
 
     p_analyse = unterbefehle.add_parser("analyse", help="Postfach auslesen und auswerten")
     gemeinsam(p_analyse)
@@ -323,6 +334,8 @@ def parser_bauen() -> argparse.ArgumentParser:
     p_demo = unterbefehle.add_parser("demo", help="Beispielreport aus synthetischen Daten")
     gemeinsam(p_demo, mit_domain=False)
     p_demo.add_argument("--vorgaenge", type=int, default=300)
+    p_demo.add_argument("--alles", action="store_true",
+                        help="Beispielreport mit allen Zusatzauswertungen")
     p_demo.set_defaults(funktion=befehl_demo, hypothese=0.80, ohne_teilen=True,
                         domain=None, konzern=None, monate=None)
 

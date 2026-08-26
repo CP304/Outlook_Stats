@@ -46,6 +46,14 @@ def auswerten(nachrichten: list[Nachricht], config: Config, ordner: Path | str,
     kategorien = mapping.zuordnung_lesen(ordner / DATEI_DOMAINS, "Domain", "Kategorie")
 
     kpi = metrics.alles_berechnen(vorgaenge, entdoppelt, config, zuordnung, kategorien)
+    if config.vollerhebung:
+        eigene = set(kontext.get("eigene_adressen") or [])
+        if not eigene:
+            # Ohne Outlook (Demo, Cache) aus der Richtung ableiten.
+            eigene = {n.absender_id for n in entdoppelt
+                      if n.richtung == "gesendet" and n.absender_id}
+        kpi["vollerhebung"] = metrics.vollerhebung(
+            vorgaenge, entdoppelt, config, zuordnung, eigene)
     kpi_fb = metrics.kern_kpis(vorgaenge_fb, entdoppelt)
     stabilitaet = metrics.stabilitaet(kpi["kern"], kpi_fb)
     qualitaet = qualitaetskennzahlen(entdoppelt, entfernt)
@@ -62,6 +70,13 @@ def auswerten(nachrichten: list[Nachricht], config: Config, ordner: Path | str,
     kontext.setdefault("ausgeschlossene_ordner", config.ordner_ausschluss)
     kontext.setdefault("stores", sorted({n.store for n in entdoppelt if n.store}))
 
+    if not config.vollerhebung:
+        # Die Zusage 'keine Inhalte' wird hier durchgesetzt, nicht erst beim
+        # Auslesen: Wo die Daten herkommen, darf keine Rolle spielen.
+        for n in entdoppelt:
+            n.betreff = ""
+            n.anhangnamen = []
+            n.groesse = 0
     cache_schreiben(entdoppelt, ordner / DATEI_CACHE)
 
     # Mapping-Dateien erzeugen bzw. behutsam ergaenzen.

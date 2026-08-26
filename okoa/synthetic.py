@@ -18,6 +18,11 @@ from .model import (
 
 
 INTERNE = [f"person{i}@firma.de" for i in range(1, 13)]
+DATEINAMEN = ["Angebot", "Preisliste", "Zeichnung", "Spezifikation", "Rahmenvertrag",
+              "Lieferplan", "Reklamation", "Protokoll"]
+ENDUNGEN = ["pdf", "xlsx", "docx", "pdf", "pdf", "step", "zip", "msg"]
+BETREFFE = ["Angebot", "Anfrage", "Bestellung", "Reklamation", "Rahmenvertrag",
+            "Liefertermin", "Preisanpassung", "Abstimmung", "Jour fixe"]
 EXTERNE_DOMAINS = [f"lieferant{i}.com" for i in range(1, 9)] + ["dienstleister.de", "kunde.at"]
 ICH = "ich@firma.de"
 
@@ -80,6 +85,9 @@ def postfach_erzeugen(
                 empfaenger = [ICH] + interne_partner
                 klassen = [INTERN] * len(empfaenger)
 
+            anzahl_anhaenge = zufall.choice([0, 0, 0, 1, 1, 2, 3])
+            namen = [f"{zufall.choice(DATEINAMEN)}.{zufall.choice(ENDUNGEN)}"
+                     for _ in range(anzahl_anhaenge)]
             n_cc = zufall.randint(0, 2) if rein_intern else 0
             n_to = max(1, len(empfaenger) - n_cc)
             laufend += 1
@@ -99,8 +107,14 @@ def postfach_erzeugen(
                 n_cc_intern=sum(1 for k in klassen[n_to:] if k == INTERN),
                 n_cc_extern=sum(1 for k in klassen[n_to:] if k == EXTERN),
                 klasse=NORMAL,
-                hat_anhang=zufall.random() < 0.3,
+                hat_anhang=anzahl_anhaenge > 0,
+                n_anhaenge=anzahl_anhaenge,
+                anhangnamen=namen,
+                groesse=zufall.randint(3_000, 40_000) + anzahl_anhaenge * 250_000,
+                betreff=f"{zufall.choice(BETREFFE)} {vorgang_nr:04d}",
+                n_bcc=1 if (gesendet and zufall.random() < 0.05) else 0,
                 ist_antwort=runde > 0,
+                ist_weiterleitung=runde > 0 and zufall.random() < 0.15,
                 ordner="Posteingang" if not gesendet else "Gesendete Elemente",
                 store="Postfach",
                 conversation_id=conv,

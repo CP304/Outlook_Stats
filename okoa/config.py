@@ -35,6 +35,12 @@ class Schwellen:
     # belastbar und der Report sagt das auch.
     warnschwelle_unaufgeloest: float = 0.05
     warnschwelle_unbekannter_fachbereich: float = 0.25
+    # Arbeitszeitfenster fuer die After-hours-Auswertung.
+    arbeitsbeginn_stunde: int = 7
+    arbeitsende_stunde: int = 19
+    # Antworten oberhalb dieser Spanne sind keine Reaktion mehr, sondern ein
+    # neuer Anlauf -- sie wuerden den Median sonst unbrauchbar machen.
+    max_antwortzeit_stunden: int = 24 * 14
 
 
 @dataclass
@@ -44,6 +50,11 @@ class Config:
     zeitraum_monate: int = 12
     ordner_ausschluss: list[str] = field(default_factory=lambda: list(ORDNER_AUSSCHLUSS_STANDARD))
     fremde_postfaecher_einbeziehen: bool = False
+    # Vollerhebung fuer die eigene Auswertung: erfasst zusaetzlich Betreff,
+    # Anhangnamen, Groesse und BCC und schaltet alle explorativen Auswertungen
+    # frei.  Fuer das eigene Postfach gedacht; fuer den Teammodus bleibt der
+    # Export unveraendert aggregiert (siehe team_export.EXPORT_FELDER).
+    vollerhebung: bool = False
     schwellen: Schwellen = field(default_factory=Schwellen)
 
     # ---------------------------------------------------------------- laden

@@ -49,6 +49,10 @@ Das erzeugt im Ordner `Auswertung`:
 | `mapping_domains.xlsx` | externe Domains nach Volumen — Spalte „Kategorie“ ausfüllen |
 | `messages.csv` | Metadaten-Zwischendatei (keine Betreffe, keine Texte) |
 
+Für das eigene Postfach: `--alles` erhebt zusätzlich Betreff, Anhangnamen, Größe und BCC und rechnet
+Antwortzeiten, Arbeitszeitmuster und Kommunikationsnetzwerk ([Kapitel 11](docs/11-vollerhebung.md)).
+Der Teamexport bleibt davon unberührt aggregiert.
+
 Nach dem Ausfüllen der Zuordnung genügt `python -m okoa neu` — das rechnet auf der Zwischendatei und
 braucht weder Outlook noch einen zweiten Postfachzugriff.
 
@@ -127,6 +131,7 @@ konstruktionsbedingt keinen Zugang zu Rohdaten hat.
 | [08 – Datenschutz](docs/08-datenschutz.md) | Was als Führungskraft geht und was nicht |
 | [09 – Teilnahme](docs/09-teilnahme.md) | Wie Kollegen freiwillig und anonym teilnehmen können |
 | [10 – Kontaktliste](docs/10-kontaktliste.md) | Externe Kontakte als Excel — mit eigener Rechtslage |
+| [11 – Vollerhebung](docs/11-vollerhebung.md) | Alles erheben, für das eigene Postfach |
 
 ## Wichtiger Hinweis
 

@@ -362,6 +362,121 @@ deshalb nur im persönlichen Report enthalten — im Teamexport fehlt sie bewuss
 """
 
 
+def _seite_vollerhebung(kpi: dict) -> str:
+    """Zusaetzliche Auswertungen der Vollerhebung.
+
+    Durchgehend als explorativ gekennzeichnet: Sie sind aufschlussreich, aber
+    methodisch angreifbar -- Antwortzeiten haengen an Urlaub und Teilzeit,
+    Netzwerkwerte an der Rolle.  Wer sie zitiert, soll das mitzitieren.
+    """
+    voll = kpi.get("vollerhebung")
+    if not voll:
+        return ""
+
+    a = voll["antwortzeiten"]
+    zeilen_a = "".join(
+        f"<tr><td>{_e(name)}</td><td>{_z(werte['median_stunden'])} h</td>"
+        f"<td>{_z(werte['q1'])} – {_z(werte['q3'])} h</td>"
+        f"<td>{_p(werte['anteil_unter_4h'])}</td>"
+        f"<td>{_p(werte['anteil_ueber_48h'])}</td><td>{werte['n']}</td></tr>"
+        for name, werte in (
+            ("interne Vorgänge", a.get(VORGANG_INTERN)),
+            ("gemischte Vorgänge", a.get(VORGANG_GEMISCHT)),
+            ("externe Vorgänge", a.get(VORGANG_EXTERN)),
+            ("ich antworte", a.get("von_mir")),
+            ("mir wird geantwortet", a.get("an_mich")),
+        ) if werte)
+
+    arbeit = voll["arbeitszeit"]
+    netz = voll["netzwerk"]
+    anh = voll["anhaenge"]
+    term = voll["termine"]
+    bcc = voll["bcc"]
+    weiter = voll["weiterleitungen"]
+
+    def partnerzeilen(eintraege):
+        return "".join(
+            f"<tr><td>{_e(p['adresse'])}</td><td>{_e(p['fachbereich'])}</td>"
+            f"<td>{p['nachrichten']}</td>"
+            f"<td>{p['vorgaenge']}</td><td>{p['grad']}</td>"
+            f"<td>{_p(p['anteil'], 1)}</td></tr>" for p in eintraege[:10])
+
+    typen = ", ".join(f"{_e(t)} ({n})" for t, n in anh.get("top_dateitypen", [])[:8])
+    fenster = arbeit.get("fenster", (7, 19))
+
+    return f"""
+<h2>Vollerhebung <span class="marke">explorativ</span></h2>
+<div class="explorativ">
+<p>Diese Auswertungen gehen über die Kern-KPIs hinaus. Sie sind aufschlussreich, aber
+methodisch angreifbar — Antwortzeiten hängen an Urlaub, Teilzeit und Zeitzonen,
+Netzwerkwerte an der Rolle. Als Hinweis brauchbar, als Beleg nicht.</p>
+
+<h3>Antwortzeiten</h3>
+<table>
+  <thead><tr><th>Ebene</th><th>Median</th><th>Q1 – Q3</th><th>≤ 4 h</th>
+  <th>&gt; 48 h</th><th>Fälle</th></tr></thead>
+  <tbody>{zeilen_a}</tbody>
+</table>
+<p class="leise">Gezählt wird nur der Sprecherwechsel innerhalb eines Vorgangs; zwei
+Nachrichten derselben Person hintereinander sind Nachfassen, keine Antwort.
+Spannen über zwei Wochen fallen heraus — das ist kein Reaktions-, sondern ein neuer Anlauf.</p>
+
+<h3>Arbeitszeitmuster</h3>
+<div class="kacheln">
+  {_kachel("Außerhalb " + f"{fenster[0]}–{fenster[1]} Uhr", _p(arbeit.get("anteil_ausserhalb", 0)),
+           f"von {arbeit.get('n', 0)} selbst gesendeten Nachrichten")}
+  {_kachel("Am Wochenende", _p(arbeit.get("anteil_wochenende", 0)), "selbst gesendet")}
+  {_kachel("Vor Arbeitsbeginn", _p(arbeit.get("anteil_vor_beginn", 0)), "selbst gesendet")}
+  {_kachel("Nach Feierabend", _p(arbeit.get("anteil_nach_ende", 0)), "selbst gesendet")}
+</div>
+<p class="leise">Nur selbst gesendete Nachrichten — empfangene sagen etwas über die
+Arbeitszeit der anderen aus, nicht über die eigene.</p>
+
+<h3>Kommunikationsnetzwerk</h3>
+<div class="kacheln">
+  {_kachel("Kommunikationspartner", str(netz["partner_gesamt"]), "im Zeitraum")}
+  {_kachel("Anteil Top 5", _p(netz["anteil_top5"]), "des gesamten Volumens")}
+  {_kachel("Anteil Top 10", _p(netz["anteil_top10"]), "des gesamten Volumens")}
+  {_kachel("Gini", _z(netz["gini"], 2), "0 = gleich verteilt, 1 = auf eine Person")}
+</div>
+<h4>Wichtigste interne Gegenüber</h4>
+<table>
+  <thead><tr><th>Kontakt</th><th>Fachbereich</th><th>Nachrichten</th><th>Vorgänge</th>
+  <th>Grad</th><th>Anteil</th></tr></thead>
+  <tbody>{partnerzeilen(netz["top_intern"])}</tbody>
+</table>
+<h4>Wichtigste externe Gegenüber</h4>
+<table>
+  <thead><tr><th>Kontakt</th><th>Fachbereich</th><th>Nachrichten</th><th>Vorgänge</th>
+  <th>Grad</th><th>Anteil</th></tr></thead>
+  <tbody>{partnerzeilen(netz["top_extern"])}</tbody>
+</table>
+<p class="leise">„Grad“ ist die Zahl der Personen, mit denen jemand gemeinsam in Vorgängen
+auftaucht; ein hoher Wert kann Bottleneck heißen oder schlicht die korrekte
+Rollenbeschreibung sein. Diese Tabellen stehen nur im persönlichen Report — die
+Managementsicht kommt ohne Namen aus, weil die Frage lautet, welche Schnittstelle Last
+erzeugt, nicht welche Person.</p>
+
+<h3>Anhänge, Termine und Nebenindikatoren</h3>
+<div class="kacheln">
+  {_kachel("Mit Anhang", _p(anh.get("anteil_mit_anhang", 0)),
+           f'Ø {_z(anh.get("anhaenge_je_nachricht", 0))} Anhänge')}
+  {_kachel("Terminobjekte", str(term.get("n", 0)),
+           f'{_p(term.get("anteil_extern", 0))} mit externer Beteiligung')}
+  {_kachel("Weiterleitungen intern", _p(weiter["anteil_weitergeleitet"]),
+           "Durchreichen statt Entscheiden")}
+  {_kachel("Mit BCC gesendet", _p(bcc["anteil_mit_bcc"]),
+           f'von {bcc["n_gesendet"]} eigenen Nachrichten')}
+</div>
+<p class="leise">Dateitypen: {typen or "—"}. Median {_z(anh.get("groesse_median_kb", 0), 0)} KB
+je Nachricht, insgesamt {_z(anh.get("volumen_gesamt_mb", 0), 0)} MB. Die Größe steht hier,
+weil sie erhoben wurde — als Aufwandsmaß taugt sie nicht, sie misst Dateianhänge.
+BCC ist nur bei selbst gesendeten Nachrichten überhaupt sichtbar und deshalb bewusst
+getrennt ausgewiesen statt in den Empfängerzahlen versteckt.</p>
+</div>
+"""
+
+
 def _anhang(qualitaet: dict, stabilitaet: dict, kontext: dict, warnschwelle: float) -> str:
     warnung = ""
     if qualitaet["anteil_unaufgeloest"] > warnschwelle:
@@ -445,6 +560,7 @@ def erzeugen(kpi: dict, qualitaet: dict, stabilitaet: dict, kontext: dict,
 {_seite_fachbereiche(kpi, warnschwelle_fachbereich)}
 {_seite_lieferanten(kpi)}
 {_seite_zeit(kpi)}
+{_seite_vollerhebung(kpi)}
 {_anhang(qualitaet, stabilitaet, kontext, warnschwelle_adressen)}
 <footer>Erzeugt mit Outlook-Kommunikationsanalyse. Das Postfach wurde ausschließlich
 gelesen und nicht verändert. Diese Auswertung ist eine Organisationsanalyse und

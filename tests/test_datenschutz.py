@@ -27,9 +27,34 @@ def ergebnis(tmp_path):
 # ------------------------------------------------- Zwischendatei ohne Inhalte
 
 def test_zwischendatei_enthaelt_keine_betreffe(tmp_path, ergebnis):
-    text = (tmp_path / pipeline.DATEI_CACHE).read_text(encoding="utf-8")
-    for verboten in ("betreff", "subject", "body", "conversation_id", "betreff_hash"):
-        assert verboten not in text.lower()
+    """Ohne Vollerhebung bleibt die Betreffspalte leer.
+
+    Die Spalte existiert im Kopf, damit dieselbe Datei beide Betriebsarten
+    traegt -- gefuellt wird sie nur, wenn die Vollerhebung eingeschaltet ist.
+    """
+    zeilen = (tmp_path / pipeline.DATEI_CACHE).read_text(encoding="utf-8").splitlines()
+    kopf = zeilen[0].split(",")
+    stelle = kopf.index("betreff")
+    for zeile in zeilen[1:]:
+        assert zeile.split(",")[stelle] == "", "Betreff darf hier nicht gespeichert sein"
+    for verboten in ("subject", "body", "conversation_id", "betreff_hash"):
+        assert verboten not in zeilen[0].lower()
+
+
+def test_vollerhebung_speichert_betreff_und_anhangnamen(tmp_path):
+    """Die Vollerhebung tut ausdruecklich, was Stufe 1 unterlaesst.
+
+    Sie ist fuer das eigene Postfach gedacht -- deshalb ist sie abschaltbar
+    und nicht die Vorgabe.
+    """
+    config = Config(interne_domains=["firma.de"], vollerhebung=True)
+    assert Config().vollerhebung is False
+    pipeline.auswerten(postfach_erzeugen(60, seed=5), config, tmp_path,
+                       bezugszeitpunkt=datetime(2026, 6, 30))
+    nachrichten = cache_lesen(tmp_path / pipeline.DATEI_CACHE)
+    assert any(n.betreff for n in nachrichten)
+    assert any(n.anhangnamen for n in nachrichten)
+    assert any(n.groesse for n in nachrichten)
 
 
 def test_zwischendatei_ist_wieder_einlesbar(tmp_path, ergebnis):
