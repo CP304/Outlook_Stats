@@ -2,8 +2,10 @@
 # Installation:  pip install -r requirements.txt
 
 # --- Pflicht -------------------------------------------------------------
-# Keine.  Die gesamte Auswertung, der HTML-Report und die Zusammenfuehrung
-# laufen mit der Standardbibliothek von Python 3.11 oder neuer.
+# Keine.  Auswertung, Oberflaeche, HTML-Report und Zusammenfuehrung laufen mit
+# der Standardbibliothek von Python 3.11 oder neuer.  Die Oberflaeche nutzt
+# tkinter, das unter Windows zum Lieferumfang von Python gehoert.  Unter Linux
+# ist dafuer je nach Distribution das Paket python3-tk noetig.
 
 # --- Windows/Outlook -----------------------------------------------------
 # Nur fuer das Auslesen des Postfachs noetig.  Ohne pywin32 laeuft alles

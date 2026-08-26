@@ -28,16 +28,19 @@ Leitplanken der ersten Stufe:
 
 ## Schnellstart
 
-Ohne Outlook, um das Ergebnis anzusehen (erzeugt einen Beispielreport aus synthetischen Daten):
+**Doppelklick auf `start.bat`.** Das öffnet die Oberfläche: interne Domain eintragen, „Analyse
+starten“. Wer erst sehen will, was herauskommt, drückt „Beispiel ansehen“ — das rechnet mit
+synthetischen Daten und braucht kein Outlook.
+
+Die Oberfläche ist mit tkinter gebaut, das zum Lieferumfang von Python gehört: keine Installation,
+kein Wartebalken beim Start, nichts zu erklären, wenn man das Werkzeug weitergibt.
+
+Alles geht auch auf der Kommandozeile:
 
 ```
-python -m okoa demo --ordner Beispiel
-```
-
-Mit dem eigenen Postfach (Windows, Outlook geöffnet) — oder per Doppelklick auf `Analyse_starten.bat`:
-
-```
-python -m okoa analyse --domain firma.de
+python -m okoa                             # Oberfläche
+python -m okoa demo --ordner Beispiel      # Beispielreport, ohne Outlook
+python -m okoa analyse --domain firma.de   # eigenes Postfach
 ```
 
 Das erzeugt im Ordner `Auswertung`:
@@ -81,12 +84,14 @@ Mit wandern Domains, Fachbereiche, Rollen und Kategorien — **nicht** die Volum
 Zuordnungsdatei, denn die gehören zum Postfach des Erstellers.
 
 Für den Teammodus führt jeder die Analyse selbst aus; die Zusammenführung der freiwillig geteilten
-Kennzahlen läuft über `python -m okoa merge --ordner Eingang` (oder `Merge_starten.bat`). Sie
+Kennzahlen läuft über den Reiter „Weitergabe und Team“ oder `python -m okoa merge --ordner Eingang`. Sie
 verweigert unter fünf Teilnehmern bewusst jedes Ergebnis — Einzelheiten in Kapitel 08 und 09.
 
 ## Aufbau
 
 ```
+okoa/gui.py               Oberfläche (tkinter) — sammelt Eingaben, zeigt an
+okoa/auftrag.py           Hintergrundarbeiten, damit das Fenster nicht einfriert
 okoa/extract_outlook.py   Outlook-COM, ausschließlich lesend   (nur Windows)
 okoa/normalize.py         Adressauflösung, Deduplikation, Klassifikation
 okoa/threads.py           Vorgangsbildung mit zwei Verfahren

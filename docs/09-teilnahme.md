@@ -5,7 +5,7 @@ Der Weg ist bewusst so gehalten, dass er ohne IT-Projekt funktioniert. Grundlage
 
 ## Verteilung — kein Setup beim Teilnehmer
 
-Ein ZIP-Ordner mit einer Datei zum Doppelklicken: `Analyse_starten.bat`.
+Ein ZIP-Ordner mit einer Datei zum Doppelklicken: `start.bat`.
 Kein Installer, keine Adminrechte, kein Outlook-Add-in, keine Änderung am Postfach.
 
 Ist Python im Unternehmen nicht verfügbar, wird ein PyInstaller-One-Folder-Build ausgeliefert —
@@ -14,9 +14,9 @@ derselbe Ordner, dieselbe Bedienung, nur größer. Die Prüfbarkeit bleibt erhal
 
 ## Ablauf beim Teilnehmer — drei Schritte
 
-**1. Doppelklick auf `Analyse_starten.bat`**
+**1. Doppelklick auf `start.bat`**
 
-Ein kurzer Startdialog:
+Die Oberfläche öffnet sich:
 - Zeitraum (vorbelegt: letzte 12 volle Monate)
 - interne Domain (vorbelegt)
 - ein klar formulierter Hinweis: *"Die Analyse liest nur Absender, Empfänger, Zeitpunkt und Ordner.
@@ -30,9 +30,10 @@ Ein kurzer Startdialog:
 | `Mein_Report.html` | vollständiger persönlicher Report | **bleibt beim Teilnehmer** |
 | `team_export.json` | aggregierte Kennzahlen, anonym | optional teilbar |
 
-**3. Abschlussdialog**
+**3. Abschluss**
 
-Er zeigt den **vollständigen Inhalt von `team_export.json` im Klartext** an, mit der Überschrift
+Unter „Weitergabe und Team“ zeigt „Eigene Kennzahlen ablegen“ den
+**vollständigen Inhalt von `team_export.json` im Klartext** an, mit der Überschrift
 *"Das — und nur das — würde geteilt."* Darunter zwei gleichwertig gestaltete Schaltflächen:
 
 - *Anonym übermitteln*
@@ -94,7 +95,7 @@ Postfächern, Rohdaten oder Cache-Dateien. Es ist gleichgültig, ob die Dateien 
 Ordner oder von einem USB-Stick kommen:
 
 ```
-Merge_starten.bat   →  Ordner mit den eingegangenen Dateien wählen  →  Gruppenkennzahlen
+Reiter „Weitergabe und Team“  →  Dateien zusammenführen …  →  Gruppenkennzahlen
 ```
 
 Verhalten:

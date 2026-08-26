@@ -11,10 +11,15 @@ wenn die Basiszahlen überzeugen.
 ### Pass 1 — nur die Domain
 
 ```
-Analyse_starten.bat
-  → Dialog: interne Domain(s), Zeitraum (Default: letzte 12 volle Monate)
-  → Lauf
+start.bat  (Doppelklick)
+  → Oberfläche: interne Domain(s), Zeitraum (Vorgabe: letzte 12 volle Monate)
+  → „Analyse starten“
 ```
+
+Die Oberfläche ist mit tkinter gebaut — dem Fensterwerkzeug, das zum Lieferumfang von Python
+gehört. Damit startet sie ohne Installation und ohne Wartezeit. Wer das Werkzeug an Kollegen
+weitergibt, muss keine 100 MB Abhängigkeiten erklären. Alles ist zusätzlich über die
+Kommandozeile erreichbar (`python -m okoa …`), was Automatisierung und Fehlersuche erleichtert.
 
 Ergebnis:
 - vollständiger Basisreport (alle Kern-KPIs, intern/extern/gemischt, Zeitverlauf, Domainkonzentration)
@@ -72,6 +77,8 @@ Junk (kein Arbeitsverkehr). Der Ausschluss wird im Report benannt.
 Die eigentliche Pflegearbeit steckt nicht in der Konfiguration, sondern in der
 Fachbereichszuordnung. Wer einmal die relevanten Kollegen ihren Abteilungen zugeordnet hat, soll das
 nicht wiederholen müssen — und der nächste Nutzer erst recht nicht bei null anfangen.
+
+In der Oberfläche unter „Weitergabe und Team“, oder auf der Kommandozeile:
 
 ```
 python -m okoa export                      # schreibt Einstellungen.json
@@ -139,6 +146,8 @@ das Salz bleibt lokal. Für Prüfungen durch Dritte gedacht.
 
 - **keine Datenbank** — eine Datei, ein Ordner, kein Server, keine IT-Freigabe nötig
 - **kein Outlook-Add-in** — Installation und Freigabeprozess wären teurer als die ganze Analyse
+- **keine schwere GUI-Bibliothek** — tkinter reicht für Eingabefelder, Knöpfe und einen Verlauf;
+  PySide6 würde die Weitergabe an Kollegen unnötig verteuern
 - **keine Graph-API-Variante in Stufe 1** — braucht Admin-Consent und damit genau die
   Organisationsdiskussion, die man am Anfang nicht führen will
 - **keine Cloud, kein Upload** — alles bleibt auf dem Rechner
