@@ -256,3 +256,23 @@ def test_filter_zeigt_nur_ungepflegte(tmp_path, monkeypatch):
     finally:
         fenster.destroy()
         eltern.destroy()
+
+
+def test_vollerhebung_hinterlaesst_eine_spur(tmp_path):
+    """Sonst sieht ein Lauf mit Vollerhebung genauso aus wie einer ohne."""
+    auftrag = auftrag_modul.Auftrag()
+    auftrag.starten(auftrag_modul.demo,
+                    Config(interne_domains=["firma.de"], vollerhebung=True),
+                    tmp_path, None)
+    meldungen = [inhalt for art, inhalt in _abwarten(auftrag, 60)
+                 if art == auftrag_modul.MELDUNG]
+    assert any("Vollerhebung gerechnet" in str(m) for m in meldungen)
+
+
+def test_ohne_vollerhebung_keine_zusatzmeldung(tmp_path):
+    auftrag = auftrag_modul.Auftrag()
+    auftrag.starten(auftrag_modul.demo, Config(interne_domains=["firma.de"]),
+                    tmp_path, None)
+    meldungen = [inhalt for art, inhalt in _abwarten(auftrag, 60)
+                 if art == auftrag_modul.MELDUNG]
+    assert not any("Vollerhebung" in str(m) for m in meldungen)

@@ -91,6 +91,25 @@ class Auftrag:
 
 # ------------------------------------------------------------- Arbeiten
 
+def _vollerhebung_melden(melden, ergebnis: dict) -> None:
+    """Sagt im Verlauf, was die Vollerhebung zusaetzlich gerechnet hat.
+
+    Ohne diese Zeile sieht ein Lauf mit Vollerhebung im Fenster genauso aus
+    wie einer ohne -- der Unterschied steckt nur im Report.
+    """
+    voll = ergebnis.get("kpi", {}).get("vollerhebung")
+    if not voll:
+        return
+    antwort = voll["antwortzeiten"].get("intern", {}).get("median_stunden")
+    netz = voll["netzwerk"]["partner_gesamt"]
+    teile = [f"{netz} Kommunikationspartner"]
+    if antwort:
+        teile.append(f"interne Antwortzeit im Median {antwort:.0f} h")
+    if voll["termine"].get("n"):
+        teile.append(f"{voll['termine']['n']} Terminobjekte")
+    melden("Vollerhebung gerechnet: " + ", ".join(teile) + ".")
+    melden("Einzelheiten im Report unter „Vollerhebung“.")
+
 def analyse(melden, config: Config, ordner: Path, hypothese: float) -> dict:
     """Postfach auslesen und auswerten."""
     from .extract_outlook import auslesen
@@ -110,6 +129,7 @@ def analyse(melden, config: Config, ordner: Path, hypothese: float) -> dict:
                  "ausgeschlossene_ordner": config.ordner_ausschluss,
                  "eigene_adressen": berichte.get("eigene_adressen", [])},
         hypothese=hypothese)
+    _vollerhebung_melden(melden, ergebnis)
     melden("Fertig.")
     return ergebnis
 
@@ -121,6 +141,7 @@ def neu_berechnen(melden, config: Config, ordner: Path, hypothese: float) -> dic
             "Es gibt noch keine Zwischendatei. Bitte zuerst eine Analyse ausführen.")
     melden("Rechne auf der vorhandenen Zwischendatei ...")
     ergebnis = pipeline.aus_cache(ordner, config, hypothese=hypothese)
+    _vollerhebung_melden(melden, ergebnis)
     melden("Fertig.")
     return ergebnis
 
@@ -144,6 +165,7 @@ def demo(melden, config: Config, ordner: Path, hypothese: float) -> dict:
         stichtag=datetime(2026, 6, 30))
     ergebnis["kontaktdatei"] = kontakte_modul.schreiben(
         zeilen, ordner / "Externe_Kontakte.xlsx")
+    _vollerhebung_melden(melden, ergebnis)
     melden("Fertig.")
     return ergebnis
 
