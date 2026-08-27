@@ -74,6 +74,9 @@ python -m okoa kontakte --domain firma.de --signaturen # Firma aus Signaturen be
 Mit `--signaturen` kommen Funktion, Telefon und Mobil aus der Signatur dazu — regelbasiert, ohne
 Sprachmodell, und nur wenn mindestens zwei Signaturen dasselbe sagen. Fax wird nie übernommen.
 
+Für die Massenpflege ins Adressbuch erzeugt `--fuer-import` zusätzlich eine vCard-Datei und eine
+Outlook-CSV, mit in Vor- und Nachname zerlegten Namen.
+
 `--signaturen` ist die einzige Stelle im Projekt, die Mailtexte liest — bewusst nicht die Vorgabe.
 Warum das trotzdem deterministisch bleibt und was datenschutzrechtlich dazugehört, steht in
 [Kapitel 10](docs/10-kontaktliste.md).
@@ -105,6 +108,7 @@ okoa/report.py            HTML-Report mit eigenen SVG-Diagrammen
 okoa/team_export.py       anonymer Export und Zusammenführung
 okoa/einstellungen.py     Weitergabe von Konfiguration und Zuordnungen
 okoa/kontakte.py          externe Kontaktliste als Excel
+okoa/kontaktexport.py     vCard und Outlook-CSV für die Massenpflege
 okoa/signaturen.py        Firmennamen aus Signaturen, regelbasiert
 ```
 

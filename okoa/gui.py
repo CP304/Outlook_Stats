@@ -209,6 +209,8 @@ class Fenster(tk.Tk):
         self.signaturen = tk.BooleanVar(value=False)
         self.fremde = tk.BooleanVar(value=False)
         self.ueberschreiben = tk.BooleanVar(value=False)
+        self.fuer_import = tk.BooleanVar(value=False)
+        self.csv_sprache = tk.StringVar(value="de")
         self.status = tk.StringVar(value="Bereit.")
         self._letztes_ergebnis: dict | None = None
 
@@ -350,6 +352,23 @@ class Fenster(tk.Tk):
             "     Dies ist die einzige Stelle, die Mailtexte liest — nur das Ende, "
             "und gespeichert wird\n     davon nur das Gefundene. Ohne den Haken "
             "kommt der Firmenname aus dem Domainnamen.")).pack(anchor="w")
+        ttk.Separator(seite).pack(fill="x", pady=12)
+        ttk.Checkbutton(
+            seite, variable=self.fuer_import,
+            text="Für die Massenpflege aufbereiten (.vcf und Outlook-CSV)").pack(
+            anchor="w")
+        ttk.Label(seite, style="Leise.TLabel", text=(
+            "     Zerlegt den Namen in Vor- und Nachname und schreibt zwei\n"
+            "     Importdateien. Die .vcf ist sprachunabhängig und der\n"
+            "     zuverlässigere Weg; die CSV braucht passende Spaltennamen:")).pack(
+            anchor="w")
+        zeile = ttk.Frame(seite)
+        zeile.pack(anchor="w", pady=(4, 0), padx=(28, 0))
+        ttk.Radiobutton(zeile, text="deutsches Outlook", value="de",
+                        variable=self.csv_sprache).pack(side="left")
+        ttk.Radiobutton(zeile, text="englisches Outlook", value="en",
+                        variable=self.csv_sprache).pack(side="left", padx=12)
+
         ttk.Button(seite, text="Kontakte exportieren",
                    command=self._kontakte_starten).pack(anchor="w", pady=16)
         self.kontakt_ergebnis = ttk.Label(seite, style="Leise.TLabel", text="")
@@ -495,6 +514,16 @@ class Fenster(tk.Tk):
             if self.signaturen.get():
                 text += (f"\nAus Signatur belegt: {z['aus_signatur']} Firmen, "
                          f"{z['mit_funktion']} Funktionen, {z['mit_telefon']} Rufnummern.")
+            einspielbar = ergebnis.get("import")
+            if einspielbar and einspielbar["kontakte"]:
+                text += (f"\nFür die Massenpflege: {einspielbar['kontakte']} Kontakte "
+                         f"({einspielbar['uebersprungen']} ohne Personennamen "
+                         f"übersprungen).")
+                self._schreiben(f"Import: {einspielbar['vcf']}")
+                self._schreiben(f"Import: {einspielbar['csv']}")
+            elif einspielbar:
+                text += ("\nFür die Massenpflege blieb nichts übrig — ohne "
+                         "Signaturauswertung fehlen die Namen.")
             self.kontakt_ergebnis.configure(text=text)
             self._schreiben(f"Datei: {ergebnis['datei']}")
             datei_oeffnen(ergebnis["datei"])
@@ -528,7 +557,8 @@ class Fenster(tk.Tk):
         config = self._config_bauen()
         if config:
             self._starten(auftrag_modul.kontakte_exportieren, config, self._ordner(),
-                          self.signaturen.get(),
+                          self.signaturen.get(), self.fuer_import.get(),
+                          self.csv_sprache.get(),
                           beschreibung="Sammle Kontakte ...")
 
     def _report_oeffnen(self) -> None:

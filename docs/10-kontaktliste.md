@@ -96,6 +96,46 @@ Erwartungswert aus der Praxis: Bei aktiven Geschäftspartnern greift die Signatu
 Einmalkontakten selten. Ein Feld bleibt lieber leer, als einen falschen Namen zu behaupten — deshalb
 steht die Herkunft in jeder Zeile.
 
+## Für die Massenpflege aufbereiten
+
+Die Excel-Liste ist eine Auswertung zum Ansehen. Wer die Kontakte ins Adressbuch übernehmen will,
+braucht getrennte Namensfelder und ein Importformat:
+
+```
+python -m okoa kontakte --domain firma.de --signaturen --fuer-import
+```
+
+Es entstehen zwei Dateien:
+
+| Datei | Wofür |
+|---|---|
+| `Kontakte_Import.vcf` | vCard 3.0, alle Kontakte in einer Datei — **sprachunabhängig und der zuverlässigere Weg** |
+| `Kontakte_Import.csv` | Outlook-Importformat mit den Spaltennamen, die der Importassistent erwartet |
+
+Die CSV-Spaltennamen hängen an der Sprache der Outlook-Installation: Ein deutsches Outlook erkennt
+`First Name` nicht und legt den Wert dann in gar keinem Feld ab. Deshalb `--sprache de|en`,
+Vorgabe deutsch. Wer unsicher ist, nimmt die vCard.
+
+**Die Namenszerlegung ist regelbasiert.** „Anna Schmidt", „Schmidt, Anna", „Dr. Anna von der Heide"
+und „Lea Wolter (Einkauf)" werden korrekt zerlegt; Titel und Namenszusätze bleiben am richtigen Feld.
+Wo es nicht eindeutig geht, bleibt der Vorname leer und der ganze Text steht im Nachnamen — ein
+falsch zerlegter Name fällt beim Import nicht auf und steht danach jahrelang falsch im Adressbuch.
+
+**Zwei bewusste Filter**, damit kein Datenmüll ins Adressbuch wandert:
+
+- Einträge ohne erkennbaren Personennamen werden übersprungen. Sonst entstehen Kontakte, die
+  „kontakt@lieferant1.com" heißen. Mit `--alle-kontakte` kommen sie trotzdem mit.
+- Ein aus dem Domainnamen abgeleiteter Firmenname wandert **nicht** ins Feld „Firma". „Lieferant4"
+  ist eine Lesehilfe für die Analyse, keine Firmierung. Nur was aus Signaturen belegt ist, wird
+  übernommen.
+
+Jeder Kontakt bekommt eine Notiz mit Herkunft und Stand: *„Outlook-Kommunikationsanalyse; aus 3
+Signaturen gelesen; letzter Kontakt: 14.05.2026; Nachrichten: 12"*. Damit ist im Adressbuch später
+nachvollziehbar, woher der Eintrag stammt und wie belastbar er ist.
+
+Ohne `--signaturen` bleibt für ein Adressbuch wenig übrig — Namen und Rufnummern stehen nun einmal
+in der Signatur.
+
 ## Datenschutz — hier gilt etwas anderes
 
 Die Kennzahlenanalyse erzeugt Aggregate. Diese Liste erzeugt **eine personenbezogene Datensammlung
@@ -106,6 +146,10 @@ Was daraus folgt:
 
 - **Zweck vorher festlegen.** Lieferantenübersicht, Ansprechpartnerpflege, Übergabe bei
   Stellenwechsel — der Zweck bestimmt, wie lange die Datei existieren darf.
+- **Ein Import ins Adressbuch ist eine dauerhafte Speicherung.** Die Excel-Liste wirft man nach der
+  Analyse weg; Kontakte im Adressbuch überleben Rechnerwechsel und wandern in Backups und
+  Mobilgeräte. Vor dem Import lohnt die Frage, ob wirklich alle Einträge dort hingehören — die
+  Notiz macht später wenigstens nachvollziehbar, woher sie kamen.
 - **Mit Funktion und Rufnummer wird aus einer Adressliste ein Profil.** Name, Rolle, Durchwahl,
   Mobilnummer und Kontakthistorie in einer Zeile sind mehr als die Summe der Teile. Genau diese
   Datei ist es, die man nicht unbedacht weitergibt — und die ein Argument dafür ist, sie nicht

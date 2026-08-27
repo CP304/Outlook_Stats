@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import kontakte as kontakte_modul
+from . import kontaktexport
 from . import einstellungen as einstellungen_modul
 from . import mapping, pipeline, team_export
 from .config import Config
@@ -148,7 +149,8 @@ def demo(melden, config: Config, ordner: Path, hypothese: float) -> dict:
 
 
 def kontakte_exportieren(melden, config: Config, ordner: Path,
-                         mit_signaturen: bool) -> dict:
+                         mit_signaturen: bool, fuer_import: bool = False,
+                         sprache: str = "de") -> dict:
     """Externe Kontakte als Excel."""
     from . import threads
     from .extract_outlook import auslesen
@@ -178,9 +180,14 @@ def kontakte_exportieren(melden, config: Config, ordner: Path,
                                          "Domain", "Kategorie")
     zeilen = kontakte_modul.als_zeilen(liste, kategorien)
     ziel = kontakte_modul.schreiben(zeilen, ordner / "Externe_Kontakte.xlsx")
+    ergebnis = {"datei": ziel,
+                "zusammenfassung": kontakte_modul.zusammenfassung(zeilen),
+                "zeilen": len(zeilen)}
+    if fuer_import:
+        melden("Bereite die Kontakte für den Import auf ...")
+        ergebnis["import"] = kontaktexport.schreiben(zeilen, ordner, sprache)
     melden("Fertig.")
-    return {"datei": ziel, "zusammenfassung": kontakte_modul.zusammenfassung(zeilen),
-            "zeilen": len(zeilen)}
+    return ergebnis
 
 
 def team_zusammenfuehren(melden, eingang: Path) -> dict:

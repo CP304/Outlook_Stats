@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import einstellungen as einstellungen_modul
 from . import kontakte as kontakte_modul
+from . import kontaktexport
 from . import mapping, pipeline, team_export
 from .config import Config
 
@@ -198,6 +199,9 @@ def befehl_kontakte(args) -> int:
                                         "Domain", "Kategorie")
     zeilen = kontakte_modul.als_zeilen(liste, kategorien)
     ziel = kontakte_modul.schreiben(zeilen, ordner / "Externe_Kontakte.xlsx")
+    einspielbar = (kontaktexport.schreiben(zeilen, ordner, args.sprache,
+                                           not args.alle_kontakte)
+                   if args.fuer_import else None)
 
     zusammen = kontakte_modul.zusammenfassung(zeilen)
     print()
@@ -214,6 +218,19 @@ def befehl_kontakte(args) -> int:
         print("  Leere Felder sind der Normalfall: Signaturen stehen meist nur in")
         print("  der ersten Mail eines Vorgangs, nicht in jeder Antwort.")
     print(f"\n  Datei: {ziel}")
+    if einspielbar and einspielbar["kontakte"]:
+        print(f"\n  Für die Massenpflege aufbereitet: {einspielbar['kontakte']} Kontakte")
+        print(f"    davon mit Firma {einspielbar['mit_firma']}, "
+              f"Position {einspielbar['mit_position']}, "
+              f"Rufnummer {einspielbar['mit_telefon']}")
+        if einspielbar["uebersprungen"]:
+            print(f"    {einspielbar['uebersprungen']} ohne erkennbaren Personennamen "
+                  f"übersprungen (mit --alle-kontakte trotzdem aufnehmen)")
+        print(f"    {einspielbar['vcf']}")
+        print(f"    {einspielbar['csv']}")
+    elif einspielbar:
+        print("\n  Kein Kontakt hatte einen erkennbaren Personennamen — ohne "
+              "--signaturen bleibt für ein Adressbuch zu wenig übrig.")
     return 0
 
 
@@ -342,6 +359,15 @@ def parser_bauen() -> argparse.ArgumentParser:
     p_kontakte = unterbefehle.add_parser(
         "kontakte", help="externe Kontakte als Excel ausgeben")
     gemeinsam(p_kontakte)
+    p_kontakte.add_argument(
+        "--fuer-import", action="store_true",
+        help="zusätzlich .vcf und Outlook-CSV für die Massenpflege erzeugen")
+    p_kontakte.add_argument(
+        "--sprache", choices=["de", "en"], default="de",
+        help="Spaltennamen der Outlook-CSV (Vorgabe: de)")
+    p_kontakte.add_argument(
+        "--alle-kontakte", action="store_true",
+        help="auch Einträge ohne erkennbaren Personennamen aufnehmen")
     p_kontakte.add_argument(
         "--signaturen", action="store_true",
         help="Firmennamen aus Signaturen lesen. Liest dafür das Ende der "
