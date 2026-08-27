@@ -32,10 +32,20 @@ PR_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"
 PR_INTERNET_MESSAGE_ID = "http://schemas.microsoft.com/mapi/proptag/0x1035001E"
 PR_TRANSPORT_MESSAGE_HEADERS = "http://schemas.microsoft.com/mapi/proptag/0x007D001E"
 
-OL_MAIL_ITEM = 43          # olMailItem
+# Folder.DefaultItemType liefert einen Wert aus OlItemType -- dort ist
+# olMailItem = 0.  Die haeufig zitierte 43 stammt aus OlObjectClass (olMail)
+# und gehoert zu Item.Class.  Wer die beiden verwechselt, erkennt keinen
+# einzigen Mailordner und wertet null Nachrichten aus.
+OL_MAIL_ITEM = 0           # OlItemType.olMailItem
+OL_KLASSE_MAIL = 43        # OlObjectClass.olMail
 OL_TO, OL_CC, OL_BCC = 1, 2, 3
 OL_DISTRIBUTION_LIST = 1   # AddressEntry.DisplayType olDistList
 OL_PRIVATE_DIST_LIST = 5
+
+# OlExchangeStoreType: 0 = Exchange-Postfach, 1 = eigenes Exchange-Postfach,
+# 3 = kein Exchange (PST-Datei).  4 waere ein zusaetzlich eingebundenes
+# fremdes Postfach -- das bleibt per Vorgabe aussen vor.
+EIGENE_STORES = (0, 1, 3)
 
 
 class OutlookNichtVerfuegbar(RuntimeError):
@@ -112,11 +122,12 @@ def ordner_sammeln(namespace, config: Config) -> list:
         name = str(_eigenschaft(ordner, "Name", ""))
         if name.strip().lower() in ausgeschlossen:
             return
-        try:
-            if _eigenschaft(ordner, "DefaultItemType", OL_MAIL_ITEM) == OL_MAIL_ITEM:
-                gefunden.append((store_name, name, ordner))
-        except Exception:
-            pass
+        # Ordner ohne Angabe werden mitgenommen: lieber ein Ordner zu viel
+        # geprueft als das halbe Postfach uebersehen.  Nicht-Mailobjekte
+        # filtert nachricht_lesen ohnehin ueber die MessageClass heraus.
+        art = _eigenschaft(ordner, "DefaultItemType", None)
+        if art in (None, OL_MAIL_ITEM):
+            gefunden.append((store_name, name, ordner))
         try:
             unterordner = list(ordner.Folders)
         except Exception:
@@ -130,7 +141,7 @@ def ordner_sammeln(namespace, config: Config) -> list:
             wurzel = store.GetRootFolder()
         except Exception:
             continue
-        eigenes = bool(_eigenschaft(store, "ExchangeStoreType", 0) in (0, 1, 3))
+        eigenes = _eigenschaft(store, "ExchangeStoreType", 0) in EIGENE_STORES
         if not eigenes and not config.fremde_postfaecher_einbeziehen:
             continue
         absteigen(wurzel, store_name)
@@ -357,6 +368,92 @@ def eigene_adressen_ermitteln(namespace) -> set[str]:
     return {a for a in adressen if a}
 
 
+def _elemente_holen(ordner, beginn: datetime):
+    """Liefert (Elemente, ob_gefiltert) fuer einen Ordner.
+
+    Der Zeitfilter wird ueber DASL gestellt und nicht ueber die
+    Klammer-Schreibweise: Deren Datumsformat haengt an den Windows-
+    Laendereinstellungen, und ein nicht passendes Format liefert klaglos eine
+    leere Menge statt eines Fehlers -- man sieht dann null Nachrichten und
+    keinen Hinweis darauf, warum.
+
+    Schlaegt der Filter fehl, wird der Ordner ungefiltert gelesen und der
+    Zeitraum spaeter in Python geprueft: lieber langsam als leer.
+    """
+    try:
+        elemente = ordner.Items
+    except Exception:
+        return None, False
+    try:
+        elemente.Sort("[ReceivedTime]", True)
+    except Exception:
+        pass
+
+    ausdruck = ('@SQL="urn:schemas:httpmail:datereceived" >= \''
+               + beginn.strftime("%Y-%m-%d %H:%M") + "'")
+    try:
+        gefiltert = elemente.Restrict(ausdruck)
+        # Ein unpassender Filter wirft nicht, er liefert nichts.  Deshalb wird
+        # geprueft, ob im Ordner ueberhaupt etwas liegt.
+        if int(gefiltert.Count) > 0 or int(elemente.Count) == 0:
+            return gefiltert, True
+    except Exception:
+        pass
+    return elemente, False
+
+
+def pruefen(config: Config) -> dict:
+    """Zeigt, was Outlook tatsaechlich hergibt.
+
+    Gedacht fuer den Fall 'null Nachrichten ausgewertet': Sie beantwortet, ob
+    das Postfach erreichbar ist, welche Speicher und Ordner gesehen werden, wie
+    viele Elemente darin liegen und ob der Zeitfilter greift.
+    """
+    namespace = verbinden()
+    beginn = datetime.now() - timedelta(days=30 * config.zeitraum_monate)
+    bericht = {
+        "eigene_adressen": sorted(eigene_adressen_ermitteln(namespace)),
+        "zeitraum_ab": beginn.strftime("%d.%m.%Y"),
+        "stores": [],
+        "ordner": [],
+        "elemente_gesamt": 0,
+        "elemente_im_zeitraum": 0,
+        "ordner_ohne_filter": 0,
+    }
+
+    for store in namespace.Stores:
+        bericht["stores"].append({
+            "name": str(_eigenschaft(store, "DisplayName", "?")),
+            "typ": _eigenschaft(store, "ExchangeStoreType", None),
+            "einbezogen": (_eigenschaft(store, "ExchangeStoreType", 0) in EIGENE_STORES
+                           or config.fremde_postfaecher_einbeziehen),
+        })
+
+    for store_name, ordnername, ordner in ordner_sammeln(namespace, config):
+        gesamt = 0
+        try:
+            gesamt = int(ordner.Items.Count)
+        except Exception:
+            pass
+        elemente, gefiltert = _elemente_holen(ordner, beginn)
+        im_zeitraum = 0
+        if elemente is not None:
+            try:
+                im_zeitraum = int(elemente.Count) if gefiltert else gesamt
+            except Exception:
+                pass
+        if not gefiltert:
+            bericht["ordner_ohne_filter"] += 1
+        bericht["elemente_gesamt"] += gesamt
+        bericht["elemente_im_zeitraum"] += im_zeitraum
+        bericht["ordner"].append({
+            "store": store_name, "ordner": ordnername,
+            "elemente": gesamt, "im_zeitraum": im_zeitraum,
+            "filter_greift": gefiltert,
+        })
+    return bericht
+
+
 def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
              mit_signaturen: bool = False) -> tuple[list[Nachricht], dict]:
     """Liest alle freigegebenen Ordner im Zeitfenster.  Rein lesend.
@@ -368,23 +465,22 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
     namespace = verbinden()
     eigene = eigene_adressen_ermitteln(namespace)
     beginn = datetime.now() - timedelta(days=30 * config.zeitraum_monate)
-    filter_ausdruck = "[ReceivedTime] >= '" + beginn.strftime("%d.%m.%Y 00:00") + "'"
 
     nachrichten: list[Nachricht] = []
     belege: dict[str, list[Beleg]] = {}
-    berichte = {"ordner": [], "stores": set(), "uebersprungen": []}
+    berichte = {"ordner": [], "stores": set(), "uebersprungen": [],
+                "ohne_filter": [], "gefundene_ordner": 0}
 
-    for store_name, ordnername, ordner in ordner_sammeln(namespace, config):
+    ordnerliste = ordner_sammeln(namespace, config)
+    berichte["gefundene_ordner"] = len(ordnerliste)
+    for store_name, ordnername, ordner in ordnerliste:
         berichte["stores"].add(store_name)
-        try:
-            elemente = ordner.Items
-            elemente.Sort("[ReceivedTime]", True)
-            # Restrict statt Vollscan -- sonst dauert es auf grossen Postfaechern
-            # unnoetig lange.
-            elemente = elemente.Restrict(filter_ausdruck)
-        except Exception:
+        elemente, gefiltert = _elemente_holen(ordner, beginn)
+        if elemente is None:
             berichte["uebersprungen"].append(f"{store_name}/{ordnername}")
             continue
+        if not gefiltert:
+            berichte["ohne_filter"].append(f"{store_name}/{ordnername}")
 
         anzahl = 0
         try:
@@ -394,6 +490,10 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
         while item is not None:
             try:
                 nachricht = nachricht_lesen(item, config, ordnername, store_name, eigene)
+                # Ohne wirksamen Filter muss der Zeitraum hier geprueft werden.
+                if (nachricht is not None and not gefiltert
+                        and nachricht.zeitstempel < beginn):
+                    nachricht = None
                 if nachricht is not None:
                     nachrichten.append(nachricht)
                     anzahl += 1
@@ -413,4 +513,5 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
     berichte["stores"] = sorted(berichte["stores"])
     berichte["eigene_adressen"] = sorted(eigene)
     berichte["kontaktbelege"] = belege
+    berichte["gelesen"] = len(nachrichten)
     return nachrichten, berichte

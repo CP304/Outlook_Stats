@@ -136,7 +136,32 @@ aber `PR_LAST_VERB_EXECUTED` ist nicht durchgängig gesetzt — daher nur explor
 - Ältere Zeiträume sind durch Aufbewahrungsrichtlinien systematisch dünner. Trendaussagen über Zeiträume
   mit unterschiedlicher Aufbewahrung sind unzulässig
 
-### 10. Performance
+### 10. Zwei Fallen, die still zu null Nachrichten führen
+
+Beide liefern keinen Fehler, sondern ein leeres Ergebnis — und genau das macht sie gefährlich.
+
+**`Folder.DefaultItemType` gehört zu `OlItemType`, dort ist `olMailItem = 0`.** Die vielzitierte
+**43** stammt aus einer anderen Aufzählung (`OlObjectClass.olMail`) und gehört zu `Item.Class`.
+Wer beide verwechselt, erkennt keinen einzigen Mailordner und wertet null Nachrichten aus, ohne
+dass irgendwo eine Ausnahme auftritt. Ordner ohne Angabe werden deshalb mitgenommen — Nicht-Mails
+filtert die `MessageClass`-Prüfung ohnehin heraus.
+
+**`Restrict` mit `[ReceivedTime] >= '01.09.2025 00:00'` hängt an den Windows-Ländereinstellungen.**
+Ein Format, das die Installation nicht erwartet, wirft nicht — es liefert eine leere Menge. Deshalb
+wird der Zeitfilter über DASL gestellt:
+
+```
+@SQL="urn:schemas:httpmail:datereceived" >= '2025-09-01 00:00'
+```
+
+Das ist sprachunabhängig. Zusätzlich wird geprüft, ob der gefilterte Ordner leer ist, obwohl er
+Elemente enthält; dann wird ungefiltert gelesen und der Zeitraum in Python geprüft — langsamer,
+aber nicht leer. Der Report benennt betroffene Ordner.
+
+Für den Ernstfall gibt es `python -m okoa pruefen` beziehungsweise „Postfach prüfen“ in der
+Oberfläche: Sie listet Speicher, Ordner, Elementzahlen und ob der Zeitfilter greift.
+
+### 11. Performance
 
 - `Items.Restrict("[ReceivedTime] >= '...'")` statt Vollscan; `Items.Sort` vorher setzen
 - niemals `Items.Item(i)` in einer Schleife über große Ordner — stattdessen `GetFirst`/`GetNext`
@@ -145,7 +170,7 @@ aber `PR_LAST_VERB_EXECUTED` ist nicht durchgängig gesetzt — daher nur explor
   bei mehrjährigen Analysen prüfen und im Report vermerken
 - Realistische Erwartung: 30.000–80.000 Elemente sind ohne Weiteres machbar, dauern aber Minuten, nicht Sekunden
 
-### 11. Read-only-Garantie
+### 12. Read-only-Garantie
 
 Keine Schreib-Property, kein `Save()`, kein `Move()`, kein `Delete()`, kein Markieren als gelesen.
 Zu beachten: bereits der Zugriff auf `.Body` kann bei manchen Konfigurationen Nebeneffekte auslösen und

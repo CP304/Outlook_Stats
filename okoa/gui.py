@@ -320,6 +320,8 @@ class Fenster(tk.Tk):
                    command=self._neu_starten).pack(side="left", padx=8)
         ttk.Button(knoepfe, text="Beispiel ansehen",
                    command=self._demo_starten).pack(side="left")
+        ttk.Button(knoepfe, text="Postfach prüfen",
+                   command=self._pruefen_starten).pack(side="left", padx=8)
 
         ttk.Label(seite, style="Leise.TLabel", text=(
             "„Neu berechnen“ rechnet auf der bereits erzeugten Zwischendatei — "
@@ -492,6 +494,19 @@ class Fenster(tk.Tk):
     def _ergebnis_zeigen(self, ergebnis) -> None:
         if not isinstance(ergebnis, dict):
             return
+        if "elemente_gesamt" in ergebnis:
+            if not ergebnis["ordner"]:
+                messagebox.showwarning(TITEL, (
+                    "Es wurde kein einziger Mailordner erkannt.\n\n"
+                    "Läuft Outlook, und ist es dasselbe Profil? Stehen die Ordner "
+                    "womöglich auf der Ausschlussliste? Ein zusätzlich "
+                    "eingebundenes fremdes Postfach bleibt per Vorgabe außen vor."))
+            elif ergebnis["elemente_im_zeitraum"] == 0:
+                messagebox.showwarning(TITEL, (
+                    "Ordner sind da, aber im Zeitraum liegt nichts.\n\n"
+                    "Größeren Zeitraum versuchen. Bei begrenztem Offline-Zeitraum "
+                    "von Outlook liegt Älteres nicht lokal vor."))
+            return
         if "kpi" in ergebnis:
             self._letztes_ergebnis = ergebnis
             kern = ergebnis["kpi"]["kern"]
@@ -503,6 +518,11 @@ class Fenster(tk.Tk):
                 f"{k2['intern']:.0%} der Nachrichten — die Differenz ist der Befund."))
             self.knopf_report.configure(state="normal")
             self._schreiben(f"Report: {ergebnis['report']}")
+            if not ergebnis["n_nachrichten"]:
+                messagebox.showwarning(TITEL, (
+                    "Es wurde keine einzige Nachricht ausgewertet.\n\n"
+                    "„Postfach prüfen“ zeigt, welche Ordner und Elemente "
+                    "gefunden werden."))
             if not ergebnis["stabilitaet"]["stabil"]:
                 self._schreiben("Hinweis: Die beiden Verfahren zur Vorgangsbildung "
                                 "weichen deutlich ab — die Vorgangsebene ist zu "
@@ -560,6 +580,13 @@ class Fenster(tk.Tk):
                           self.signaturen.get(), self.fuer_import.get(),
                           self.csv_sprache.get(),
                           beschreibung="Sammle Kontakte ...")
+
+    def _pruefen_starten(self) -> None:
+        """Diagnose -- beantwortet die Frage 'warum null Nachrichten?'."""
+        config = self._config_bauen()
+        if config:
+            self._starten(auftrag_modul.postfach_pruefen, config,
+                          beschreibung="Prüfe Postfach ...")
 
     def _report_oeffnen(self) -> None:
         if self._letztes_ergebnis:

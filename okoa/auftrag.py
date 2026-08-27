@@ -170,6 +170,25 @@ def demo(melden, config: Config, ordner: Path, hypothese: float) -> dict:
     return ergebnis
 
 
+def postfach_pruefen(melden, config: Config) -> dict:
+    """Zeigt, was Outlook hergibt -- fuer den Fall 'null Nachrichten'."""
+    from .extract_outlook import pruefen
+
+    melden("Frage Outlook ab ...")
+    bericht = pruefen(config)
+    melden(f"Eigene Adressen: {', '.join(bericht['eigene_adressen']) or 'keine erkannt'}")
+    for store in bericht["stores"]:
+        melden(f"Speicher: {store['name']} (Typ {store['typ']}, "
+               f"{'einbezogen' if store['einbezogen'] else 'übersprungen'})")
+    for eintrag in bericht["ordner"]:
+        melden(f"  {eintrag['store']} / {eintrag['ordner']}: "
+               f"{eintrag['elemente']} Elemente, {eintrag['im_zeitraum']} im Zeitraum"
+               + ("" if eintrag["filter_greift"] else "  (Zeitfilter ohne Wirkung)"))
+    melden(f"Gesamt: {bericht['elemente_gesamt']} Elemente, "
+           f"{bericht['elemente_im_zeitraum']} ab {bericht['zeitraum_ab']}")
+    return bericht
+
+
 def kontakte_exportieren(melden, config: Config, ordner: Path,
                          mit_signaturen: bool, fuer_import: bool = False,
                          sprache: str = "de") -> dict:

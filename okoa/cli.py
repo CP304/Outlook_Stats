@@ -280,6 +280,51 @@ def befehl_import(args) -> int:
     return 0
 
 
+def befehl_pruefen(args) -> int:
+    """Diagnose: was sieht das Programm im Postfach?"""
+    from .extract_outlook import OutlookNichtVerfuegbar, pruefen
+
+    ordner = Path(args.ordner)
+    config = _konfiguration(args, ordner)
+    fehler = config.pruefen()
+    if fehler:
+        for f in fehler:
+            print(f"  {f}")
+        return 2
+    try:
+        bericht = pruefen(config)
+    except OutlookNichtVerfuegbar as fehler:
+        print(f"\n  {fehler}")
+        return 3
+
+    print(f"\n  Eigene Adressen: "
+          f"{', '.join(bericht['eigene_adressen']) or 'keine erkannt'}")
+    print(f"  Zeitraum ab {bericht['zeitraum_ab']}\n")
+    for store in bericht["stores"]:
+        print(f"  Speicher: {store['name']}  (Typ {store['typ']}, "
+              f"{'einbezogen' if store['einbezogen'] else 'übersprungen'})")
+    print()
+    for eintrag in bericht["ordner"]:
+        hinweis = "" if eintrag["filter_greift"] else "   (Zeitfilter ohne Wirkung)"
+        print(f"    {eintrag['store']} / {eintrag['ordner']}: "
+              f"{eintrag['elemente']} Elemente, "
+              f"{eintrag['im_zeitraum']} im Zeitraum{hinweis}")
+    print(f"\n  Gesamt: {bericht['elemente_gesamt']} Elemente, "
+          f"{bericht['elemente_im_zeitraum']} im Zeitraum")
+
+    if not bericht["ordner"]:
+        print("\n  Es wurde kein einziger Mailordner erkannt. Mögliche Ursachen:")
+        print("    - Outlook läuft nicht oder mit einem anderen Profil")
+        print("    - alle Ordner stehen auf der Ausschlussliste in config.json")
+        print("    - das Postfach ist ein zusätzlich eingebundenes fremdes "
+              "Postfach\n      (dann --fremde-postfaecher, siehe docs/08-datenschutz.md)")
+    elif bericht["elemente_im_zeitraum"] == 0:
+        print("\n  Ordner sind da, aber nichts im Zeitraum. Mit --monate einen "
+              "größeren\n  Zeitraum versuchen, oder den Cached-Modus von Outlook "
+              "prüfen:\n  bei begrenztem Offline-Zeitraum liegt Älteres nicht lokal vor.")
+    return 0
+
+
 def befehl_merge(args) -> int:
     """Liest ausschließlich Teamexporte -- kein Zugang zu Postfächern oder Rohdaten."""
     ordner = Path(args.ordner)
@@ -392,6 +437,12 @@ def parser_bauen() -> argparse.ArgumentParser:
                           help="nur Fachbereiche und Kategorien übernehmen, "
                                "die eigene Konfiguration unangetastet lassen")
     p_import.set_defaults(funktion=befehl_import)
+
+    p_pruefen = unterbefehle.add_parser(
+        "pruefen", help="zeigt, welche Ordner und Elemente gefunden werden")
+    gemeinsam(p_pruefen)
+    p_pruefen.add_argument("--fremde-postfaecher", action="store_true")
+    p_pruefen.set_defaults(funktion=befehl_pruefen)
 
     p_merge = unterbefehle.add_parser("merge", help="Teamexporte zusammenführen")
     p_merge.add_argument("--ordner", default=".", help="Ordner mit den team_export-Dateien")
