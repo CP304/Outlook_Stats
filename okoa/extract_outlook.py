@@ -28,7 +28,12 @@ from .signaturen import firma_kandidat, funktion_kandidat, telefon_kandidaten
 
 
 # MAPI-Eigenschaften, die ueber den PropertyAccessor erreichbar sind.
+# PR_SMTP_ADDRESS existiert auf Recipients und AddressEntries -- nicht auf
+# dem MailItem.  Fuer den Absender einer Nachricht ist PidTagSenderSmtpAddress
+# der richtige Weg; er funktioniert auch dann noch, wenn der Absender das
+# Unternehmen verlassen hat und GetExchangeUser() deshalb nichts mehr findet.
 PR_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"
+PR_SENDER_SMTP = "http://schemas.microsoft.com/mapi/proptag/0x5D01001E"
 PR_INTERNET_MESSAGE_ID = "http://schemas.microsoft.com/mapi/proptag/0x1035001E"
 PR_TRANSPORT_MESSAGE_HEADERS = "http://schemas.microsoft.com/mapi/proptag/0x007D001E"
 
@@ -81,8 +86,11 @@ def _smtp_aufloesen(objekt, adresse: str, typ: str) -> str:
     if adresse and typ and typ.upper() != "EX" and not ist_x500(adresse):
         return adresse_normalisieren(adresse)
 
+    # Reihenfolge: erst die Eigenschaften des Objekts selbst (Recipient bzw.
+    # MailItem), dann die Umwege ueber das Adressbuch.
     for versuch in (
         lambda: objekt.PropertyAccessor.GetProperty(PR_SMTP_ADDRESS),
+        lambda: objekt.PropertyAccessor.GetProperty(PR_SENDER_SMTP),
         lambda: objekt.AddressEntry.GetExchangeUser().PrimarySmtpAddress,
         lambda: objekt.Sender.GetExchangeUser().PrimarySmtpAddress,
     ):
@@ -149,13 +157,6 @@ def ordner_sammeln(namespace, config: Config) -> list:
 
 
 # ---------------------------------------------------------- Nachrichten
-
-def _hat_empfaenger(item) -> bool:
-    try:
-        return item.Recipients is not None
-    except Exception:
-        return False
-
 
 def _signaturteil(item) -> str:
     """Liest NUR das Ende des Mailtexts, fuer die Firmenerkennung.
@@ -293,6 +294,11 @@ def nachricht_lesen(item, config: Config, ordner: str, store: str,
                                zeitstempel.hour, zeitstempel.minute, zeitstempel.second)
     except Exception:
         return None
+    # Outlook stellt nicht gesetzte Datumsfelder als 1.1.4501 dar.  So ein
+    # Element hat keinen brauchbaren Zeitstempel und wuerde als absurder
+    # 'letzter Kontakt' in der Kontaktliste stehen.
+    if zeitstempel.year >= 4500:
+        return None
 
     absender = _smtp_aufloesen(item, str(_eigenschaft(item, "SenderEmailAddress", "")),
                                str(_eigenschaft(item, "SenderEmailType", "")))
@@ -360,7 +366,13 @@ def eigene_adressen_ermitteln(namespace) -> set[str]:
             continue
         if wert and "@" in str(wert):
             adressen.add(adresse_normalisieren(str(wert)))
-    for konto in _eigenschaft(namespace.Session, "Accounts", []) or []:
+    # NameSpace.Accounts direkt -- ein Umweg ueber .Session wuerde bereits am
+    # Attributzugriff scheitern koennen, bevor irgendein Schutz greift.
+    try:
+        konten = list(namespace.Accounts)
+    except Exception:
+        konten = []
+    for konto in konten:
         try:
             adressen.add(adresse_normalisieren(str(konto.SmtpAddress)))
         except Exception:
@@ -394,9 +406,21 @@ def _elemente_holen(ordner, beginn: datetime):
     try:
         gefiltert = elemente.Restrict(ausdruck)
         # Ein unpassender Filter wirft nicht, er liefert nichts.  Deshalb wird
-        # geprueft, ob im Ordner ueberhaupt etwas liegt.
+        # unterschieden, ob das leere Ergebnis echt sein kann.
         if int(gefiltert.Count) > 0 or int(elemente.Count) == 0:
             return gefiltert, True
+        # Leer, obwohl der Ordner Elemente hat: Die Sortierung ist absteigend,
+        # das erste Element also das juengste.  Liegt es vor dem Fenster, hat
+        # der Ordner schlicht nichts im Zeitraum -- das leere Ergebnis stimmt,
+        # und ein ungefilterter Vollscan (bei Archiven teuer) unterbleibt.
+        try:
+            juengstes = elemente.GetFirst()
+            zeit = juengstes.ReceivedTime if juengstes is not None else None
+            if zeit is not None and datetime(zeit.year, zeit.month, zeit.day,
+                                             zeit.hour, zeit.minute) < beginn:
+                return gefiltert, True
+        except Exception:
+            pass
     except Exception:
         pass
     return elemente, False

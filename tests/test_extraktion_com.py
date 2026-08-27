@@ -189,3 +189,71 @@ def test_leeres_ergebnis_wird_gemeldet(config, outlook, tmp_path):
     assert bericht["elemente_gesamt"] == 0
     assert any("Gesamt: 0 Elemente" in m for m in meldungen)
     assert any("Eigene Adressen" in m for m in meldungen)
+
+
+# ----------------------------------------------- Archivordner und Konten
+
+def test_archivordner_mit_nur_altem_wird_nicht_vollgescannt(config, outlook):
+    """Ein leeres Filterergebnis heißt nicht kaputter Filter: Liegt im Ordner
+    schlicht nichts im Zeitraum, ist leer die richtige Antwort. Ein Vollscan
+    eines großen Archivs wäre teuer, und die Warnung 'Filter ohne Wirkung'
+    wäre falsch."""
+    alt = JETZT - timedelta(days=400)
+    archiv = fake_outlook.Folder("Archiv 2019", [
+        fake_outlook.MailItem("a@lieferant.com",
+                              [fake_outlook.Recipient("ich@firma.de", 1)], alt,
+                              betreff=f"Alt {i}")
+        for i in range(5)
+    ])
+    wurzel = fake_outlook.Folder("Postfach", [], [archiv])
+    outlook(fake_outlook.Namespace([fake_outlook.Store("P", wurzel)]))
+
+    nachrichten, bericht = extract_outlook.auslesen(config)
+    assert nachrichten == []
+    assert bericht["ohne_filter"] == [], \
+        "Ein echtes Nichts im Zeitraum ist keine Filterstörung"
+
+
+def test_kontenadressen_zaehlen_als_eigene(config, outlook):
+    """Wer über ein zweites Konto sendet, dessen Mails sind trotzdem eigene --
+    sonst kippt die Richtung und mit ihr die Außenorientierung."""
+    wurzel = fake_outlook.Folder("Postfach", [], [fake_outlook.Folder("Gesendet", [
+        fake_outlook.MailItem("zweitkonto@firma.de",
+                              [fake_outlook.Recipient("kunde@extern.com", 1)], JETZT)])])
+    outlook(fake_outlook.Namespace([fake_outlook.Store("P", wurzel)],
+                                   konten=["ich@firma.de", "zweitkonto@firma.de"]))
+    nachrichten, _ = extract_outlook.auslesen(config)
+    assert nachrichten[0].richtung == "gesendet"
+
+
+def test_namespace_ohne_konten_faellt_nicht(config, outlook):
+    """Die Kontenliste ist optional -- ihr Fehlen darf den Start nicht kosten.
+    Genau so ein ungeschützter Attributzugriff hätte auslesen() vor der
+    ersten Nachricht beendet."""
+    namespace = fake_outlook.standard_postfach(JETZT)
+    assert not hasattr(namespace, "Accounts")
+    outlook(namespace)
+    nachrichten, _ = extract_outlook.auslesen(config)
+    assert len(nachrichten) == 4
+
+
+def test_absenderaufloesung_ohne_item_eigenschaft(config, outlook):
+    """PR_SMTP_ADDRESS existiert auf dem MailItem nicht -- die Attrappe hält
+    sich daran. Die Auflösung muss über PidTagSenderSmtpAddress gelingen."""
+    outlook(fake_outlook.standard_postfach(JETZT))
+    nachrichten, _ = extract_outlook.auslesen(config)
+    exchange_absender = [n for n in nachrichten if n.absender_id == "kollege@firma.de"]
+    assert exchange_absender, "Der interne Absender muss als SMTP-Adresse ankommen"
+    assert exchange_absender[0].absender_klasse == "intern"
+
+
+def test_platzhalterdatum_4501_wird_verworfen(config, outlook):
+    """Outlook stellt nicht gesetzte Datumsfelder als Jahr 4501 dar. So ein
+    Element läge 'im Zeitraum' und stünde als absurder letzter Kontakt in der
+    Kontaktliste."""
+    wurzel = fake_outlook.Folder("Postfach", [], [fake_outlook.Folder("Posteingang", [
+        fake_outlook.MailItem("a@lieferant.com",
+                              [fake_outlook.Recipient("ich@firma.de", 1)],
+                              datetime(4501, 1, 1))])])
+    outlook(fake_outlook.Namespace([fake_outlook.Store("P", wurzel)]))
+    assert extract_outlook.auslesen(config)[0] == []

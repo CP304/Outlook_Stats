@@ -79,8 +79,13 @@ class MailItem:
         self.SenderEmailAddress = (
             "/o=Firma/ou=Gruppe/cn=Recipients/cn=" + absender.split("@")[0]
             if exchange else absender)
+        # Bewusst wie das Original: PR_SMTP_ADDRESS (0x39FE001E) existiert auf
+        # Recipients und AddressEntries, NICHT auf dem MailItem.  Fuer den
+        # Absender gibt es PidTagSenderSmtpAddress (0x5D01001E).  Eine
+        # Attrappe, die hier freundlicher ist als Outlook, wuerde genau den
+        # Fehler verdecken, den sie finden soll.
         self.PropertyAccessor = Eigenschaften({
-            "http://schemas.microsoft.com/mapi/proptag/0x39FE001E": absender,
+            "http://schemas.microsoft.com/mapi/proptag/0x5D01001E": absender,
             "http://schemas.microsoft.com/mapi/proptag/0x1035001E":
                 message_id or f"<{betreff}-{zeitpunkt.isoformat()}@firma.de>",
             "http://schemas.microsoft.com/mapi/proptag/0x007D001E": "",
@@ -141,14 +146,24 @@ class Store:
         return self._wurzel
 
 
+class Konto:
+    def __init__(self, smtp: str):
+        self.SmtpAddress = smtp
+
+
 class Namespace:
-    def __init__(self, stores: list[Store], eigene: str = "ich@firma.de"):
+    """Wie das Original: Accounts haengt am Namespace, eine Session-Eigenschaft
+    gibt es hier bewusst nicht -- Code, der sie voraussetzt, soll fallen."""
+
+    def __init__(self, stores: list[Store], eigene: str = "ich@firma.de",
+                 konten: list[str] | None = None):
         self.Stores = stores
         self.CurrentUser = type("Nutzer", (), {
             "Address": eigene,
             "AddressEntry": AddressEntry(eigene, typ="EX"),
         })()
-        self.Session = type("Sitzung", (), {"Accounts": []})()
+        if konten is not None:
+            self.Accounts = [Konto(k) for k in konten]
 
 
 def standard_postfach(zeitpunkt: datetime, filter_versteht_dasl: bool = True) -> Namespace:
