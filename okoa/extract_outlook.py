@@ -68,10 +68,34 @@ def verbinden():
     try:
         return win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
     except Exception as fehler:  # pragma: no cover -- nur auf Windows erreichbar
-        raise OutlookNichtVerfuegbar(
-            "Outlook liess sich nicht ansprechen.  Bitte Outlook starten und "
-            "erneut versuchen."
-        ) from fehler
+        raise OutlookNichtVerfuegbar(_outlook_hinweis(fehler)) from fehler
+
+
+def _outlook_hinweis(fehler: Exception) -> str:
+    """Uebersetzt COM-Fehler in die tatsaechliche Ursache.
+
+    Ein blanker Fehlercode wie -2147221164 hilft niemandem weiter.  Die drei
+    Faelle unten decken praktisch alles ab, was im Alltag schiefgeht.
+    """
+    text = str(fehler).lower()
+    if "0x800401f0" in text or "coinitialize" in text:
+        return ("Der Outlook-Zugriff wurde nicht angemeldet (CoInitialize). "
+                "Das ist ein Programmfehler -- bitte melden.")
+    if "80080005" in text or "server execution failed" in text:
+        return ("Outlook liess sich nicht starten.\n\n"
+                "Das passiert, wenn Outlook mit anderen Rechten laeuft als "
+                "dieses Programm.  Beides gleich starten: entweder beide "
+                "normal oder beide als Administrator.")
+    if "0x80029c4a" in text or "-2147319779" in text or "class not registered" in text:
+        return ("Auf diesem Rechner ist kein Outlook installiert, das sich "
+                "ansprechen laesst.\n\n"
+                "Die neue Outlook-App aus dem Microsoft Store hat keine "
+                "solche Schnittstelle -- gebraucht wird das klassische "
+                "Outlook aus Microsoft 365 oder Office.")
+    return ("Outlook liess sich nicht ansprechen.\n\n"
+            "Bitte Outlook starten und erneut versuchen.  Laeuft Outlook "
+            "bereits, hilft haeufig ein Neustart von Outlook.\n\n"
+            f"Meldung von Windows: {fehler}")
 
 
 # ------------------------------------------------------------ Adressen
@@ -380,6 +404,37 @@ def eigene_adressen_ermitteln(namespace) -> set[str]:
     return {a for a in adressen if a}
 
 
+def eigene_domain() -> list[str]:
+    """Ermittelt die interne Maildomain aus dem eigenen Postfach.
+
+    Damit entfaellt die einzige Pflichteingabe.  Wer sein Postfach oeffnet,
+    hat die Antwort ohnehin schon im Programm stehen -- danach zu fragen ist
+    eine Fehlerquelle ohne Gegenwert.
+    """
+    try:
+        namespace = verbinden()
+    except OutlookNichtVerfuegbar:
+        return []
+    domains = []
+    for adresse in sorted(eigene_adressen_ermitteln(namespace)):
+        domain = adresse.rsplit("@", 1)[1] if "@" in adresse else ""
+        # Freemail-Domains sind keine Firmendomains -- wer privat testet,
+        # soll nicht 'gmail.com' als internes Unternehmen gemeldet bekommen.
+        if domain and domain not in FREEMAIL and domain not in domains:
+            domains.append(domain)
+    return domains
+
+
+# Bekannte Freemail-Anbieter.  Bewusst kurz gehalten: Die Liste soll die
+# offensichtlichen Faelle abfangen, nicht vollstaendig sein.
+FREEMAIL = {
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.de", "hotmail.com",
+    "hotmail.de", "live.com", "live.de", "web.de", "gmx.de", "gmx.net",
+    "gmx.at", "gmx.ch", "t-online.de", "yahoo.com", "yahoo.de", "icloud.com",
+    "me.com", "aol.com", "freenet.de", "posteo.de", "mailbox.org",
+}
+
+
 def _elemente_holen(ordner, beginn: datetime):
     """Liefert (Elemente, ob_gefiltert) fuer einen Ordner.
 
@@ -478,8 +533,17 @@ def pruefen(config: Config) -> dict:
     return bericht
 
 
+class Abgebrochen(RuntimeError):
+    """Der Nutzer hat den Lauf beendet."""
+
+
+# Nach so vielen Elementen wird der Fortschritt gemeldet.  Klein genug, dass
+# sich das Fenster sichtbar ruehrt; gross genug, dass das Melden nicht bremst.
+MELDESCHRITT = 250
+
+
 def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
-             mit_signaturen: bool = False) -> tuple[list[Nachricht], dict]:
+             mit_signaturen: bool = False, abbruch=None) -> tuple[list[Nachricht], dict]:
     """Liest alle freigegebenen Ordner im Zeitfenster.  Rein lesend.
 
     mit_signaturen liest zusaetzlich das Ende der Mailtexte, um Firmennamen zu
@@ -497,7 +561,13 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
 
     ordnerliste = ordner_sammeln(namespace, config)
     berichte["gefundene_ordner"] = len(ordnerliste)
+    if fortschritt:
+        fortschritt(f"{len(ordnerliste)} Ordner gefunden.")
+    gesamt_gelesen = 0
+
     for store_name, ordnername, ordner in ordnerliste:
+        if abbruch is not None and abbruch.is_set():
+            raise Abgebrochen("Der Lauf wurde abgebrochen.")
         berichte["stores"].add(store_name)
         elemente, gefiltert = _elemente_holen(ordner, beginn)
         if elemente is None:
@@ -512,6 +582,8 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
         except Exception:
             continue
         while item is not None:
+            if abbruch is not None and abbruch.is_set():
+                raise Abgebrochen("Der Lauf wurde abgebrochen.")
             try:
                 nachricht = nachricht_lesen(item, config, ordnername, store_name, eigene)
                 # Ohne wirksamen Filter muss der Zeitraum hier geprueft werden.
@@ -526,6 +598,12 @@ def auslesen(config: Config, fortschritt=None, kontakte_sammeln: bool = False,
                             belege.setdefault(beleg.adresse, []).append(beleg)
             except Exception:
                 pass
+            gesamt_gelesen += 1
+            # Ohne laufende Meldung sieht ein grosses Postfach minutenlang aus
+            # wie ein haengendes Programm -- und wird abgeschossen.
+            if fortschritt and gesamt_gelesen % MELDESCHRITT == 0:
+                fortschritt(f"  {gesamt_gelesen} Elemente gelesen "
+                            f"({store_name} / {ordnername}) ...")
             try:
                 item = elemente.GetNext()
             except Exception:

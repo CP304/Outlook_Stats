@@ -57,21 +57,39 @@ goto fehler_python
 
 rem =====================================================================
 :pakete
-%PY% -c "import win32com.client, openpyxl" >nul 2>nul
-if not errorlevel 1 goto starten
+%PY% -c "import win32com.client" >nul 2>nul
+if not errorlevel 1 goto excel_paket
 
 echo.
 echo   Erststart: benoetigte Pakete werden eingerichtet ...
 echo.
 %PY% -m pip install --upgrade pip
 %PY% -m pip install -r requirements.txt
-if errorlevel 1 goto fehler_pakete
 rem  Einmalige Nacharbeit von pywin32.  Scheitert sie, ist das unkritisch --
 rem  fuer den lesenden Zugriff auf Outlook wird sie in aller Regel nicht
 rem  gebraucht.  Deshalb wird das Ergebnis bewusst nicht geprueft.
 %PY% -m pywin32_postinstall -install >nul 2>nul
-%PY% -c "import win32com.client, openpyxl" >nul 2>nul
+rem  Nur pywin32 ist Pflicht -- ohne den Zugriff auf Outlook gibt es nichts
+rem  auszuwerten.  Der Rueckgabewert von pip genuegt als Nachweis nicht: pip
+rem  meldet auch dann Erfolg, wenn der Import danach scheitert.
+%PY% -c "import win32com.client" >nul 2>nul
 if errorlevel 1 goto fehler_pakete
+
+:excel_paket
+rem  openpyxl ist ausdruecklich optional: Ohne das Paket entstehen CSV- statt
+rem  Excel-Dateien, die sich ebenso in Excel oeffnen lassen.  Daran darf der
+rem  Start nicht scheitern -- ein blockierender Proxy wuerde sonst die ganze
+rem  Auswertung kosten, obwohl sie vollstaendig liefe.
+%PY% -c "import openpyxl" >nul 2>nul
+if not errorlevel 1 goto starten
+%PY% -m pip install openpyxl >nul 2>nul
+%PY% -c "import openpyxl" >nul 2>nul
+if not errorlevel 1 goto starten
+echo.
+echo   Hinweis: openpyxl liess sich nicht einrichten.  Die Auswertung laeuft
+echo   vollstaendig weiter, die Tabellen entstehen als CSV statt als XLSX.
+echo   Beide oeffnen sich in Excel per Doppelklick.
+echo.
 
 :starten
 %PY% -c "import tkinter" >nul 2>nul

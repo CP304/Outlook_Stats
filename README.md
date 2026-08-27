@@ -33,12 +33,26 @@ ein — zuerst über `winget`, sonst direkt von python.org, jeweils nur für den
 ohne Adminrechte. Anschließend installiert sie die beiden Pakete (`pywin32` für den
 Outlook-Zugriff, `openpyxl` für die Excel-Dateien) und startet die Oberfläche.
 
-Dann nur noch: interne Domain eintragen, „Analyse starten“. Wer erst sehen will, was herauskommt,
+Dann nur noch **„Analyse starten“**: Die interne Domain holt sich das Programm aus dem eigenen
+Postfach, sie muss nicht eingetippt werden. (Steht sie doch mal falsch, versteht das Feld auch
+`Max@Firma.DE`, `@firma.de` oder mehrere Domains mit Komma.) Wer erst sehen will, was herauskommt,
 drückt „Beispiel ansehen“ — das rechnet mit synthetischen Daten und braucht kein Outlook.
 
 Scheitert die Einrichtung am Firmenproxy, sagt die Datei genau das und nennt den Befehl zum
-Nachholen von Hand. Das Konsolenfenster bleibt bewusst offen: Dort stehen die Meldungen, falls
-doch etwas klemmt.
+Nachholen von Hand. Nur `pywin32` ist Pflicht — fehlt `openpyxl`, entstehen CSV- statt
+Excel-Dateien und alles andere läuft unverändert weiter. Das Konsolenfenster bleibt bewusst offen:
+Dort stehen die Meldungen, falls doch etwas klemmt.
+
+Wenn im Alltag doch etwas hakt, ist es meist eines von dreien — alle drei sind abgefangen:
+
+| Fall | Was passiert |
+|---|---|
+| Report oder Mapping ist in Excel bzw. im Browser geöffnet | Wird **vor** der Lesephase gemeldet. Passiert es trotzdem, landet das Ergebnis unter einem Namen mit Zeitstempel daneben, statt verloren zu gehen |
+| Großes Postfach, der Lauf dauert | Fortschritt alle 250 Elemente, dazu ein **Abbrechen**-Knopf |
+| Outlook meldet einen COM-Fehler | Die Meldung nennt die Ursache im Klartext (andere Rechte, fehlendes klassisches Outlook), nicht den Fehlercode |
+
+Jeder Lauf schreibt `Auswertung/protokoll.txt` mit. Falls etwas schiefgeht, genügt diese eine Datei
+zur Klärung — kein abfotografiertes Fenster.
 
 Die Oberfläche ist mit tkinter gebaut, das zum Lieferumfang von Python gehört: keine Installation,
 kein Wartebalken beim Start, nichts zu erklären, wenn man das Werkzeug weitergibt.

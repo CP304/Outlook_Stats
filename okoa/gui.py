@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import webbrowser
 from pathlib import Path
 
@@ -217,6 +218,39 @@ class Fenster(tk.Tk):
         self._aufbauen()
         self._konfiguration_laden()
         self.after(TAKT_MS, self._warteschlange_pruefen)
+        # Die einzige Pflichteingabe selbst beantworten, sobald das Fenster
+        # steht.  Im Hintergrund, damit der Start nicht darauf wartet.
+        if not self.domain.get().strip():
+            self.after(200, self._domain_ermitteln)
+
+    def _domain_ermitteln(self) -> None:
+        """Fuellt die interne Domain aus dem eigenen Postfach.
+
+        Ohne Outlook geschieht schlicht nichts -- kein Dialog, keine Meldung.
+        """
+        def ermitteln():
+            try:
+                from .extract_outlook import eigene_domain
+
+                gefunden = eigene_domain()
+            except Exception:
+                gefunden = []
+            self._gefundene_domain = gefunden
+
+        self._gefundene_domain = None
+        faden = threading.Thread(target=ermitteln, daemon=True)
+        faden.start()
+
+        def einsetzen():
+            if faden.is_alive():
+                self.after(200, einsetzen)
+                return
+            if self._gefundene_domain and not self.domain.get().strip():
+                self.domain.set(", ".join(self._gefundene_domain))
+                self._schreiben("Interne Domain aus dem eigenen Postfach "
+                                f"übernommen: {', '.join(self._gefundene_domain)}")
+
+        self.after(200, einsetzen)
 
     # ------------------------------------------------------------ Aufbau
     def _aufbauen(self) -> None:
@@ -263,6 +297,9 @@ class Fenster(tk.Tk):
         self.knopf_report = ttk.Button(fuss, text="Report öffnen", state="disabled",
                                        command=self._report_oeffnen)
         self.knopf_report.pack(side="right")
+        self.knopf_abbruch = ttk.Button(fuss, text="Abbrechen", state="disabled",
+                                        command=self._abbrechen)
+        self.knopf_abbruch.pack(side="right", padx=6)
         ttk.Button(fuss, text="Ordner öffnen",
                    command=lambda: datei_oeffnen(self._ordner())).pack(
             side="right", padx=6)
@@ -465,8 +502,8 @@ class Fenster(tk.Tk):
             self.balken.start(12)
         else:
             self.balken.stop()
-        for knopf in (self.knopf_analyse,):
-            knopf.configure(state="disabled" if an else "normal")
+        self.knopf_analyse.configure(state="disabled" if an else "normal")
+        self.knopf_abbruch.configure(state="normal" if an else "disabled")
 
     def _starten(self, arbeit, *args, beschreibung: str = "Läuft ...", **kwargs) -> None:
         if self.auftrag.laeuft:
@@ -480,11 +517,17 @@ class Fenster(tk.Tk):
         for art, inhalt in self.auftrag.abholen():
             if art == auftrag_modul.MELDUNG:
                 self._schreiben(str(inhalt))
+                self.auftrag.protokollieren(self._ordner(), str(inhalt))
             elif art == auftrag_modul.FEHLER:
                 meldung, spur = inhalt
                 self._schreiben("Fehler: " + meldung)
-                self._beschaeftigt(False, "Abgebrochen.")
-                messagebox.showerror(TITEL, meldung)
+                self.auftrag.protokollieren(self._ordner(), "FEHLER " + meldung)
+                self.auftrag.protokollieren(self._ordner(), spur)
+                self._beschaeftigt(False, "Fehlgeschlagen.")
+                protokoll = self._ordner() / "protokoll.txt"
+                messagebox.showerror(TITEL, (
+                    f"{meldung}\n\nEinzelheiten stehen im Protokoll:\n"
+                    f"{protokoll}"))
                 print(spur, file=sys.stderr)
             else:
                 self._beschaeftigt(False, "Fertig.")
@@ -580,6 +623,12 @@ class Fenster(tk.Tk):
                           self.signaturen.get(), self.fuer_import.get(),
                           self.csv_sprache.get(),
                           beschreibung="Sammle Kontakte ...")
+
+    def _abbrechen(self) -> None:
+        self.auftrag.abbrechen()
+        self._schreiben("Abbruch angefordert -- der Lauf endet beim nächsten "
+                        "Element.")
+        self.status.set("Wird abgebrochen ...")
 
     def _pruefen_starten(self) -> None:
         """Diagnose -- beantwortet die Frage 'warum null Nachrichten?'."""

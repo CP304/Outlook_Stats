@@ -7,6 +7,7 @@ Vorgabewert, der fuer den ersten Lauf traegt.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -43,6 +44,29 @@ class Schwellen:
     max_antwortzeit_stunden: int = 24 * 14
 
 
+def _domains_aufraeumen(werte: list[str]) -> list[str]:
+    """'Max@Firma.DE ', '@firma.de', 'https://firma.de/' -> 'firma.de'."""
+    fertig = []
+    einzeln = []
+    for wert in werte:
+        # Auch innerhalb eines Feldes trennen: 'firma.de, tochter.de' waere
+        # sonst eine einzige, nie zutreffende Domain -- und alles gaelte als
+        # extern, ohne dass irgendwo ein Fehler erschiene.
+        einzeln.extend(teil for teil in re.split(r"[,;\s]+", str(wert)) if teil)
+    for wert in einzeln:
+        text = str(wert).strip().lower()
+        for praefix in ("https://", "http://", "www."):
+            if text.startswith(praefix):
+                text = text[len(praefix):]
+        text = text.split("/")[0].strip()
+        if "@" in text:
+            text = text.rsplit("@", 1)[1]
+        text = text.strip(" .@<>")
+        if text and text not in fertig:
+            fertig.append(text)
+    return fertig
+
+
 @dataclass
 class Config:
     interne_domains: list[str] = field(default_factory=list)
@@ -73,8 +97,22 @@ class Config:
         )
 
     # ------------------------------------------------------------ pruefen
+    def aufraeumen(self) -> None:
+        """Bringt Eingaben in Form, statt sie abzulehnen.
+
+        Wer nach einer Domain gefragt wird, tippt erfahrungsgemaess auch mal
+        die eigene Adresse, ein fuehrendes @ oder eine ganze URL.  Das ist
+        keine Fehleingabe, die eine Meldung verdient -- das ist eine
+        Schreibweise, die man verstehen kann.
+        """
+        self.interne_domains = _domains_aufraeumen(self.interne_domains)
+        self.konzern_domains = _domains_aufraeumen(self.konzern_domains)
+        if self.zeitraum_monate < 1:
+            self.zeitraum_monate = 12
+
     def pruefen(self) -> list[str]:
         """Gibt verstaendliche Meldungen zurueck, wenn etwas fehlt."""
+        self.aufraeumen()
         fehler = []
         if not self.interne_domains:
             fehler.append(
@@ -82,10 +120,9 @@ class Config:
                 "intern nicht von extern unterscheiden."
             )
         for d in self.interne_domains + self.konzern_domains:
-            if "@" in d or "." not in d:
-                fehler.append(f"'{d}' sieht nicht wie eine Domain aus (erwartet z. B. 'firma.de').")
-        if self.zeitraum_monate < 1:
-            fehler.append("Der Zeitraum muss mindestens einen Monat umfassen.")
+            if "." not in d:
+                fehler.append(
+                    f"'{d}' sieht nicht wie eine Domain aus (erwartet z. B. 'firma.de').")
         return fehler
 
     # ------------------------------------------------------- normalisiert

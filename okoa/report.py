@@ -17,6 +17,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
+from . import dateien
 from .metrics import GROESSENKLASSEN
 from .model import VORGANG_EXTERN, VORGANG_GEMISCHT, VORGANG_INTERN
 
@@ -678,5 +679,7 @@ ausdrücklich keine Leistungs- oder Verhaltenskontrolle.</footer>
 </main></body></html>"""
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
-    pfad.write_text(inhalt, encoding="utf-8")
-    return pfad
+    # Haelt der Browser den Report offen, landet er unter einem Namen mit
+    # Zeitstempel daneben -- die Auswertung war zu teuer, um sie wegzuwerfen.
+    return dateien.mit_ausweichen(
+        pfad, lambda ziel: ziel.write_text(inhalt, encoding="utf-8"))

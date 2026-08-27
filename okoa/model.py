@@ -110,9 +110,15 @@ CACHE_SPALTEN = [
 ]
 
 
-def cache_schreiben(nachrichten: list[Nachricht], pfad: Path | str) -> None:
+def cache_schreiben(nachrichten: list[Nachricht], pfad: Path | str) -> Path:
+    from . import dateien
+
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
+    return dateien.mit_ausweichen(pfad, lambda ziel: _cache_schreiben(nachrichten, ziel))
+
+
+def _cache_schreiben(nachrichten: list[Nachricht], pfad: Path) -> None:
     with pfad.open("w", encoding="utf-8", newline="") as f:
         schreiber = csv.DictWriter(f, fieldnames=CACHE_SPALTEN)
         schreiber.writeheader()

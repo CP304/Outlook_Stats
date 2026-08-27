@@ -146,13 +146,22 @@ def _als_excel_schreiben(zeilen: list[dict], spalten: list[str], pfad: Path,
 def schreiben(zeilen: list[dict], spalten: list[str], pfad: Path,
               auswahl: tuple[str, list[str]] | None = None) -> Path:
     """Schreibt als .xlsx, wenn openpyxl vorhanden ist, sonst als .csv."""
+    from . import dateien
+
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
-    if pfad.suffix.lower() == ".xlsx" and _als_excel_schreiben(zeilen, spalten, pfad, auswahl):
-        return pfad
-    ersatz = pfad.with_suffix(".csv")
-    _als_csv_schreiben(zeilen, spalten, ersatz)
-    return ersatz
+
+    def einmal(ziel: Path) -> None:
+        if ziel.suffix.lower() == ".xlsx" and _als_excel_schreiben(
+                zeilen, spalten, ziel, auswahl):
+            return
+        _als_csv_schreiben(zeilen, spalten, ziel.with_suffix(".csv"))
+
+    ergebnis = dateien.mit_ausweichen(pfad, einmal)
+    # Ohne openpyxl entsteht die .csv -- der zurueckgegebene Pfad muss das sagen.
+    if ergebnis.suffix.lower() == ".xlsx" and not ergebnis.exists():
+        return ergebnis.with_suffix(".csv")
+    return ergebnis
 
 
 def ergaenzen(neue_zeilen: list[dict], spalten: list[str], pfad: Path,

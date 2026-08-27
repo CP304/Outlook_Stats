@@ -257,3 +257,24 @@ def test_platzhalterdatum_4501_wird_verworfen(config, outlook):
                               datetime(4501, 1, 1))])])
     outlook(fake_outlook.Namespace([fake_outlook.Store("P", wurzel)]))
     assert extract_outlook.auslesen(config)[0] == []
+
+
+# --------------------------------------------------- Verständliche Fehler
+
+@pytest.mark.parametrize("meldung,erwartet", [
+    ("Server execution failed (0x80080005)", "Rechten"),
+    ("Class not registered (0x80029C4A)", "klassische"),
+    ("CoInitialize has not been called (0x800401F0)", "Programmfehler"),
+    ("irgendein unbekannter Fehler", "Neustart"),
+])
+def test_com_fehler_nennen_die_ursache(meldung, erwartet):
+    """Ein blanker Fehlercode hilft niemandem weiter."""
+    hinweis = extract_outlook._outlook_hinweis(RuntimeError(meldung))
+    assert erwartet in hinweis
+
+
+def test_neue_outlook_app_wird_benannt():
+    """Die Store-App hat keine COM-Schnittstelle -- das muss dastehen,
+    sonst sucht man den Fehler beim Programm."""
+    hinweis = extract_outlook._outlook_hinweis(RuntimeError("Class not registered"))
+    assert "Microsoft Store" in hinweis

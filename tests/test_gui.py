@@ -276,3 +276,80 @@ def test_ohne_vollerhebung_keine_zusatzmeldung(tmp_path):
     meldungen = [inhalt for art, inhalt in _abwarten(auftrag, 60)
                  if art == auftrag_modul.MELDUNG]
     assert not any("Vollerhebung" in str(m) for m in meldungen)
+
+
+# --------------------------------------------------- Robustheit im Alltag
+
+def test_abbruch_beendet_den_lauf(tmp_path):
+    """Ein großes Postfach muss sich stoppen lassen, ohne den Prozess zu killen."""
+    import threading
+
+    from okoa.extract_outlook import Abgebrochen
+
+    auftrag = auftrag_modul.Auftrag()
+
+    def lange_arbeit(melden, abbruch=None):
+        for i in range(1000):
+            if abbruch is not None and abbruch.is_set():
+                raise Abgebrochen("Der Lauf wurde abgebrochen.")
+            time.sleep(0.002)
+        return "durchgelaufen"
+
+    auftrag.starten(lange_arbeit)
+    time.sleep(0.1)
+    auftrag.abbrechen()
+    meldungen = _abwarten(auftrag, 20)
+    art, inhalt = meldungen[-1]
+    assert art == auftrag_modul.FERTIG, "Abbruch ist kein Fehler"
+    assert inhalt is None
+    assert any("Abgebrochen" in str(m) for _, m in meldungen)
+
+
+def test_protokoll_haelt_die_meldungen_fest(tmp_path):
+    """Nach einem Fehler soll eine Datei genügen, kein abfotografiertes Fenster."""
+    auftrag = auftrag_modul.Auftrag()
+    auftrag.protokollieren(tmp_path, "Erste Meldung")
+    auftrag.protokollieren(tmp_path, "Zweite Meldung")
+    inhalt = (tmp_path / "protokoll.txt").read_text(encoding="utf-8")
+    assert "Erste Meldung" in inhalt and "Zweite Meldung" in inhalt
+    assert inhalt.count("\n") == 2
+
+
+def test_protokoll_scheitert_lautlos(tmp_path):
+    """Ein fehlendes Protokoll darf niemals den Lauf kosten."""
+    auftrag = auftrag_modul.Auftrag()
+    datei = tmp_path / "belegt"
+    datei.write_text("kein Ordner", encoding="utf-8")
+    auftrag.protokollieren(datei, "egal")     # darf nicht werfen
+
+
+def test_gesperrte_dateien_werden_vorab_gemeldet(tmp_path, monkeypatch):
+    """Nach zwanzig Minuten Lesephase daran zu scheitern wäre das Ärgerlichste."""
+    from okoa import auftrag as modul
+    from okoa import dateien
+
+    (tmp_path / "Mein_Report.html").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(dateien, "schreibbar", lambda pfad: False)
+
+    meldungen = []
+    modul._vorab_pruefen(meldungen.append, tmp_path)
+    assert any("gesperrt" in m for m in meldungen)
+    assert any("Mein_Report.html" in m for m in meldungen)
+
+
+def test_ergebnis_geht_bei_gesperrter_datei_nicht_verloren(tmp_path):
+    """Die Auswertung ist zu teuer, um sie an einem offenen Excel zu verlieren."""
+    from okoa import dateien
+
+    ziel = tmp_path / "Report.html"
+    ziel.write_text("alt", encoding="utf-8")
+
+    def schreiben(pfad):
+        if pfad == ziel:
+            raise PermissionError(13, "Zugriff verweigert")
+        pfad.write_text("neu", encoding="utf-8")
+
+    ergebnis = dateien.mit_ausweichen(ziel, schreiben)
+    assert ergebnis != ziel
+    assert ergebnis.read_text(encoding="utf-8") == "neu"
+    assert ziel.read_text(encoding="utf-8") == "alt", "Das Original bleibt unberührt"

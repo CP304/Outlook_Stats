@@ -168,7 +168,7 @@ def test_pfadsuche_nach_der_installation(text):
 
 def test_pakete_werden_geprueft_nicht_nur_installiert(text):
     """pip meldet auch dann Erfolg, wenn danach der Import scheitert."""
-    assert text.count("import win32com.client, openpyxl") >= 2
+    assert text.count("import win32com.client") >= 2
 
 
 def test_fehlerwege_halten_das_fenster_offen(text):
@@ -264,3 +264,24 @@ def test_installationsweg_fuehrt_zurueck_zu_den_paketen(text):
     graph = _ablauf(text)
     assert "pakete" in graph["installieren"] or "pakete" in graph["@start"]
     assert "fehler_python" in graph["installieren"]
+
+
+def test_nur_pywin32_ist_pflicht(text):
+    """openpyxl ist optional -- ohne das Paket entstehen CSV- statt
+    Excel-Dateien. Ein blockierender Proxy darf nicht die ganze Auswertung
+    kosten, obwohl sie vollständig liefe."""
+    pflicht = _abschnitt(text, "pakete")
+    assert 'import win32com.client" >nul' in pflicht
+    assert "openpyxl" not in pflicht.split("goto fehler_pakete")[0]
+
+    optional = _abschnitt(text, "excel_paket")
+    assert "openpyxl" in optional
+    assert "fehler" not in optional, "openpyxl darf keinen Abbruch ausloesen"
+    assert "CSV" in optional
+
+
+def test_pip_rueckgabewert_ist_kein_nachweis(text):
+    """pip meldet auch dann Erfolg, wenn der Import danach scheitert --
+    geprüft wird deshalb der Import selbst."""
+    pflicht = _abschnitt(text, "pakete")
+    assert pflicht.count('import win32com.client') >= 2

@@ -8,7 +8,18 @@ wenn die Basiszahlen überzeugen.
 
 ## Zwei-Pass-Modell
 
-### Pass 1 — nur die Domain
+### Pass 1 — ohne jede Eingabe
+
+Die interne Domain ermittelt das Programm aus dem eigenen Postfach. Nach einer Angabe zu fragen,
+die man ohnehin schon hat, ist eine Fehlerquelle ohne Gegenwert — und die häufigste Ursache für
+ein Ergebnis, in dem alles als „extern“ gilt. Freemail-Domains werden dabei ausgenommen, damit
+beim privaten Ausprobieren nicht `gmail.com` als Firma erscheint.
+
+Wird doch von Hand eingetragen, versteht das Feld die üblichen Schreibweisen: eine ganze
+E-Mail-Adresse, ein führendes `@`, eine URL, mehrere Domains mit Komma. Das sind keine
+Fehleingaben, sondern Schreibweisen, die man verstehen kann.
+
+### Pass 1 — die Einzelheiten
 
 ```
 start.bat  (Doppelklick)

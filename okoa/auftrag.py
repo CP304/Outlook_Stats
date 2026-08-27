@@ -19,7 +19,7 @@ from pathlib import Path
 from . import kontakte as kontakte_modul
 from . import kontaktexport
 from . import einstellungen as einstellungen_modul
-from . import mapping, pipeline, team_export
+from . import dateien, mapping, pipeline, team_export
 from .config import Config
 
 
@@ -35,6 +35,8 @@ class Auftrag:
     def __init__(self) -> None:
         self.warteschlange: queue.Queue = queue.Queue()
         self._faden: threading.Thread | None = None
+        # Wird von der Oberflaeche gesetzt; die Arbeit fragt sie regelmaessig ab.
+        self.abbruch = threading.Event()
 
     @property
     def laeuft(self) -> bool:
@@ -44,10 +46,25 @@ class Auftrag:
         """Startet eine Arbeit, wenn nicht schon eine laeuft."""
         if self.laeuft:
             return False
+        self.abbruch.clear()
         self._faden = threading.Thread(
             target=self._ausfuehren, args=(arbeit, args, kwargs), daemon=True)
         self._faden.start()
         return True
+
+    def protokollieren(self, ordner: Path, text: str) -> None:
+        """Schreibt jede Meldung mit Zeitstempel mit.
+
+        Damit steht nach einem Fehler alles in einer Datei, die sich schicken
+        laesst -- statt eines abfotografierten Fensters.
+        """
+        try:
+            ordner = Path(ordner)
+            ordner.mkdir(parents=True, exist_ok=True)
+            with (ordner / "protokoll.txt").open("a", encoding="utf-8") as datei:
+                datei.write(f"{datetime.now():%d.%m.%Y %H:%M:%S}  {text}\n")
+        except OSError:
+            pass      # Ein fehlendes Protokoll darf nie den Lauf kosten.
 
     def _ausfuehren(self, arbeit, args, kwargs) -> None:
         # COM muss in jedem Faden einzeln angemeldet werden.  Ohne das schlaegt
@@ -63,10 +80,23 @@ class Auftrag:
             pass
 
         try:
+            # Arbeiten, die lange laufen, bekommen die Abbruchflagge gereicht.
+            import inspect
+
+            if "abbruch" in inspect.signature(arbeit).parameters:
+                kwargs = {**kwargs, "abbruch": self.abbruch}
             ergebnis = arbeit(self.melden, *args, **kwargs)
             self.warteschlange.put((FERTIG, ergebnis))
         except Exception as fehler:
-            self.warteschlange.put((FEHLER, (str(fehler), traceback.format_exc())))
+            # Abbruch ist kein Fehler -- er soll nicht wie einer aussehen.
+            from .extract_outlook import Abgebrochen
+
+            if isinstance(fehler, Abgebrochen):
+                self.warteschlange.put((MELDUNG, "Abgebrochen."))
+                self.warteschlange.put((FERTIG, None))
+            else:
+                self.warteschlange.put(
+                    (FEHLER, (str(fehler), traceback.format_exc())))
         finally:
             if angemeldet:
                 try:
@@ -75,6 +105,10 @@ class Auftrag:
                     pythoncom.CoUninitialize()
                 except Exception:
                     pass
+
+    def abbrechen(self) -> None:
+        """Bittet die laufende Arbeit, beim naechsten Element aufzuhoeren."""
+        self.abbruch.set()
 
     def melden(self, text: str) -> None:
         self.warteschlange.put((MELDUNG, text))
@@ -90,6 +124,25 @@ class Auftrag:
 
 
 # ------------------------------------------------------------- Arbeiten
+
+ERGEBNISDATEIEN = ["Mein_Report.html", "messages.csv", "mapping_personen",
+                   "mapping_domains", "Externe_Kontakte", "Kontakte_Import"]
+
+
+def _vorab_pruefen(melden, ordner: Path) -> None:
+    """Meldet belegte Zieldateien, bevor die lange Lesephase beginnt.
+
+    Nach zwanzig Minuten Auslesen daran zu scheitern, dass Excel eine Datei
+    offen haelt, waere die aergerlichste Art zu verlieren.
+    """
+    belegt = dateien.belegte_dateien(ordner, ERGEBNISDATEIEN)
+    if not belegt:
+        return
+    namen = ", ".join(p.name for p in belegt)
+    melden(f"Hinweis: geöffnet und daher gesperrt -- {namen}")
+    melden("Diese Dateien bitte schließen. Sonst landet das Ergebnis unter "
+           "einem Namen mit Zeitstempel daneben.")
+
 
 def _vollerhebung_melden(melden, ergebnis: dict) -> None:
     """Sagt im Verlauf, was die Vollerhebung zusaetzlich gerechnet hat.
@@ -110,16 +163,18 @@ def _vollerhebung_melden(melden, ergebnis: dict) -> None:
     melden("Vollerhebung gerechnet: " + ", ".join(teile) + ".")
     melden("Einzelheiten im Report unter „Vollerhebung“.")
 
-def analyse(melden, config: Config, ordner: Path, hypothese: float) -> dict:
+def analyse(melden, config: Config, ordner: Path, hypothese: float,
+            abbruch=None) -> dict:
     """Postfach auslesen und auswerten."""
     from .extract_outlook import auslesen
 
+    _vorab_pruefen(melden, ordner)
     melden(f"Lese Outlook, Zeitraum {config.zeitraum_monate} Monate ...")
     melden("Es wird ausschließlich gelesen; am Postfach ändert sich nichts.")
     if config.vollerhebung:
         melden("Vollerhebung: Betreff, Anhangnamen, Größe und BCC werden erfasst.")
 
-    nachrichten, berichte = auslesen(config, fortschritt=melden)
+    nachrichten, berichte = auslesen(config, fortschritt=melden, abbruch=abbruch)
     melden(f"{len(nachrichten)} Elemente gelesen. Werte aus ...")
 
     config.speichern(ordner / "config.json")
@@ -139,6 +194,7 @@ def neu_berechnen(melden, config: Config, ordner: Path, hypothese: float) -> dic
     if not (ordner / pipeline.DATEI_CACHE).exists():
         raise FileNotFoundError(
             "Es gibt noch keine Zwischendatei. Bitte zuerst eine Analyse ausführen.")
+    _vorab_pruefen(melden, ordner)
     melden("Rechne auf der vorhandenen Zwischendatei ...")
     ergebnis = pipeline.aus_cache(ordner, config, hypothese=hypothese)
     _vollerhebung_melden(melden, ergebnis)
@@ -191,7 +247,7 @@ def postfach_pruefen(melden, config: Config) -> dict:
 
 def kontakte_exportieren(melden, config: Config, ordner: Path,
                          mit_signaturen: bool, fuer_import: bool = False,
-                         sprache: str = "de") -> dict:
+                         sprache: str = "de", abbruch=None) -> dict:
     """Externe Kontakte als Excel."""
     from . import threads
     from .extract_outlook import auslesen
@@ -204,6 +260,7 @@ def kontakte_exportieren(melden, config: Config, ordner: Path,
         n for n in config.ordner_ausschluss
         if any(w in n.lower() for w in ("junk", "spam", "gelösch", "gelosch",
                                         "geloesch", "deleted"))]
+    _vorab_pruefen(melden, ordner)
     melden("Lese Outlook für die Kontaktliste ...")
     if mit_signaturen:
         melden("Signaturauswertung an: das Ende der Mailtexte wird gelesen,")
@@ -211,7 +268,8 @@ def kontakte_exportieren(melden, config: Config, ordner: Path,
 
     nachrichten, berichte = auslesen(config, fortschritt=melden,
                                      kontakte_sammeln=True,
-                                     mit_signaturen=mit_signaturen)
+                                     mit_signaturen=mit_signaturen,
+                                     abbruch=abbruch)
     entdoppelt, _ = deduplizieren(nachrichten)
     threads.zuordnen(entdoppelt, luecke_tage=config.schwellen.thread_luecke_tage)
     vorgaenge = threads.vorgaenge_bilden(entdoppelt)
