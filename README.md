@@ -28,9 +28,17 @@ Leitplanken der ersten Stufe:
 
 ## Schnellstart
 
-**Doppelklick auf `start.bat`.** Das öffnet die Oberfläche: interne Domain eintragen, „Analyse
-starten“. Wer erst sehen will, was herauskommt, drückt „Beispiel ansehen“ — das rechnet mit
-synthetischen Daten und braucht kein Outlook.
+**Doppelklick auf `start.bat`.** Mehr ist nicht nötig: Fehlt Python, richtet die Datei es selbst
+ein — zuerst über `winget`, sonst direkt von python.org, jeweils nur für den eigenen Benutzer und
+ohne Adminrechte. Anschließend installiert sie die beiden Pakete (`pywin32` für den
+Outlook-Zugriff, `openpyxl` für die Excel-Dateien) und startet die Oberfläche.
+
+Dann nur noch: interne Domain eintragen, „Analyse starten“. Wer erst sehen will, was herauskommt,
+drückt „Beispiel ansehen“ — das rechnet mit synthetischen Daten und braucht kein Outlook.
+
+Scheitert die Einrichtung am Firmenproxy, sagt die Datei genau das und nennt den Befehl zum
+Nachholen von Hand. Das Konsolenfenster bleibt bewusst offen: Dort stehen die Meldungen, falls
+doch etwas klemmt.
 
 Die Oberfläche ist mit tkinter gebaut, das zum Lieferumfang von Python gehört: keine Installation,
 kein Wartebalken beim Start, nichts zu erklären, wenn man das Werkzeug weitergibt.

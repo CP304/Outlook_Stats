@@ -6,11 +6,16 @@ Der Weg ist bewusst so gehalten, dass er ohne IT-Projekt funktioniert. Grundlage
 ## Verteilung — kein Setup beim Teilnehmer
 
 Ein ZIP-Ordner mit einer Datei zum Doppelklicken: `start.bat`.
-Kein Installer, keine Adminrechte, kein Outlook-Add-in, keine Änderung am Postfach.
+Keine Adminrechte, kein Outlook-Add-in, keine Änderung am Postfach.
 
-Ist Python im Unternehmen nicht verfügbar, wird ein PyInstaller-One-Folder-Build ausgeliefert —
-derselbe Ordner, dieselbe Bedienung, nur größer. Die Prüfbarkeit bleibt erhalten, weil der Quellcode
-öffentlich einsehbar ist.
+**Fehlendes Python richtet die Datei selbst ein** — über `winget`, sonst direkt von python.org,
+in beiden Fällen nur für den eigenen Benutzer. Danach installiert sie die beiden benötigten Pakete
+und startet die Oberfläche. Der Teilnehmer muss nichts vorbereiten und nichts entscheiden.
+
+Zwei Dinge sind dabei bewusst gelöst, weil sie in der Praxis genau hier scheitern: Der Ordner darf
+auf einem **Netzlaufwerk** liegen (`pushd` statt `cd`, sonst verweigert cmd.exe den UNC-Pfad), und
+bei einem **blockierenden Firmenproxy** bricht die Datei nicht wortlos ab, sondern nennt den Befehl
+zum Nachholen von Hand.
 
 ## Ablauf beim Teilnehmer — drei Schritte
 

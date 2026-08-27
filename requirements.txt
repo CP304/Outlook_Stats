@@ -1,6 +1,10 @@
 # Outlook-Kommunikationsanalyse -- Abhaengigkeiten
 # Installation:  pip install -r requirements.txt
 
+# start.bat richtet alles selbst ein -- Python inbegriffen, falls es fehlt.
+# Diese Datei wird von dort aufgerufen; von Hand braucht man sie nur, wenn die
+# automatische Einrichtung am Firmenproxy scheitert.
+#
 # --- Pflicht -------------------------------------------------------------
 # Keine.  Auswertung, Oberflaeche, HTML-Report und Zusammenfuehrung laufen mit
 # der Standardbibliothek von Python 3.11 oder neuer.  Die Oberflaeche nutzt
