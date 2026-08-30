@@ -51,8 +51,10 @@ Wenn im Alltag doch etwas hakt, ist es meist eines von dreien — alle drei sind
 | Großes Postfach, der Lauf dauert | Fortschritt alle 250 Elemente, dazu ein **Abbrechen**-Knopf |
 | Outlook meldet einen COM-Fehler | Die Meldung nennt die Ursache im Klartext (andere Rechte, fehlendes klassisches Outlook), nicht den Fehlercode |
 
-Jeder Lauf schreibt `Auswertung/protokoll.txt` mit. Falls etwas schiefgeht, genügt diese eine Datei
-zur Klärung — kein abfotografiertes Fenster.
+Jeder Lauf schreibt `Auswertung/protokoll.txt` mit — und zwar **selbsterklärend**: Am Anfang jedes
+Laufs stehen Programmstand, Python-Version, pywin32, Outlook-Version, Profil und alle gefundenen
+Speicher, danach jede Meldung mit Zeitstempel. Diese eine Datei beantwortet alle Fragen, ohne dass
+jemand am Rechner sitzen muss. Falls etwas schiefgeht: Datei schicken, fertig.
 
 Die Oberfläche ist mit tkinter gebaut, das zum Lieferumfang von Python gehört: keine Installation,
 kein Wartebalken beim Start, nichts zu erklären, wenn man das Werkzeug weitergibt.

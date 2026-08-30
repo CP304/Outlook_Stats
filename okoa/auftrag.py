@@ -52,6 +52,37 @@ class Auftrag:
         self._faden.start()
         return True
 
+    def umgebung_protokollieren(self, ordner: Path, config=None) -> None:
+        """Schreibt einmal je Lauf, worauf das Programm hier trifft.
+
+        Damit ist das Protokoll fuer sich allein aussagefaehig -- es laesst
+        sich weiterreichen, ohne dass jemand am Rechner nachfragen muss.
+        """
+        from . import __version__
+        from .extract_outlook import umgebung
+
+        self.protokollieren(ordner, "=" * 62)
+        self.protokollieren(ordner, f"Neuer Lauf -- Programmstand {__version__}")
+        try:
+            werte = umgebung()
+        except Exception as fehler:
+            self.protokollieren(ordner, f"Umgebung nicht ermittelbar: {fehler}")
+            return
+        self.protokollieren(ordner, f"Python {werte['python']} ({werte['python_pfad']})")
+        self.protokollieren(ordner, f"System {werte['windows']}")
+        self.protokollieren(ordner, f"pywin32 {werte['pywin32']}")
+        self.protokollieren(ordner, f"Outlook {werte['outlook']}"
+                                    + (f", Profil {werte['profil']}" if werte["profil"] else ""))
+        for speicher in werte["speicher"]:
+            self.protokollieren(
+                ordner, f"  Speicher: {speicher['name']} (Typ {speicher['typ']}, "
+                        f"zwischengespeichert {speicher['zwischenspeicher']})")
+        if config is not None:
+            self.protokollieren(
+                ordner, f"Einstellung: Domains {config.interne_domains}, "
+                        f"{config.zeitraum_monate} Monate, "
+                        f"Vollerhebung {config.vollerhebung}")
+
     def protokollieren(self, ordner: Path, text: str) -> None:
         """Schreibt jede Meldung mit Zeitstempel mit.
 

@@ -510,6 +510,10 @@ class Fenster(tk.Tk):
             messagebox.showinfo(TITEL, "Es läuft bereits eine Auswertung.")
             return
         self._schreiben("")
+        # Der Umgebungskopf steht vor jedem Lauf im Protokoll -- ohne Claude
+        # auf dem Rechner muss diese eine Datei alles beantworten.
+        config = args[0] if args and isinstance(args[0], Config) else None
+        self.auftrag.umgebung_protokollieren(self._ordner(), config)
         self._beschaeftigt(True, beschreibung)
         self.auftrag.starten(arbeit, *args, **kwargs)
 

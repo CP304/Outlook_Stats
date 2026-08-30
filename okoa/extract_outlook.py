@@ -404,6 +404,54 @@ def eigene_adressen_ermitteln(namespace) -> set[str]:
     return {a for a in adressen if a}
 
 
+def umgebung() -> dict:
+    """Sammelt, was zur Fehlersuche auf einem fremden Rechner noetig ist.
+
+    Steht kein Claude auf dem Rechner, muss eine einzige Datei alle Fragen
+    beantworten: Welches Python, welches pywin32, welches Outlook, wie viele
+    Speicher.  Sonst beginnt genau das Hin und Her, das niemand will.
+    """
+    import platform
+    import sys
+
+    bericht = {
+        "python": sys.version.split()[0],
+        "python_pfad": sys.executable,
+        "windows": platform.platform(),
+        "pywin32": "fehlt",
+        "outlook": "nicht erreichbar",
+        "profil": "",
+        "speicher": [],
+    }
+    try:
+        import win32com.client  # noqa: PLC0415
+        try:
+            import win32api  # noqa: PLC0415
+
+            bericht["pywin32"] = str(win32api.GetFileVersionInfo(
+                win32com.client.__file__.rsplit("\\", 3)[0] + "\\pywintypes.dll",
+                "\\"))
+        except Exception:
+            bericht["pywin32"] = "vorhanden"
+    except ImportError:
+        return bericht
+
+    try:
+        anwendung = win32com.client.Dispatch("Outlook.Application")
+        bericht["outlook"] = str(_eigenschaft(anwendung, "Version", "?"))
+        namespace = anwendung.GetNamespace("MAPI")
+        bericht["profil"] = str(_eigenschaft(namespace, "CurrentProfileName", ""))
+        for store in namespace.Stores:
+            bericht["speicher"].append({
+                "name": str(_eigenschaft(store, "DisplayName", "?")),
+                "typ": _eigenschaft(store, "ExchangeStoreType", None),
+                "zwischenspeicher": _eigenschaft(store, "IsCachedExchange", None),
+            })
+    except Exception as fehler:
+        bericht["outlook"] = f"nicht erreichbar: {fehler}"
+    return bericht
+
+
 def eigene_domain() -> list[str]:
     """Ermittelt die interne Maildomain aus dem eigenen Postfach.
 

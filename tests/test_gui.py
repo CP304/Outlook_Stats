@@ -353,3 +353,26 @@ def test_ergebnis_geht_bei_gesperrter_datei_nicht_verloren(tmp_path):
     assert ergebnis != ziel
     assert ergebnis.read_text(encoding="utf-8") == "neu"
     assert ziel.read_text(encoding="utf-8") == "alt", "Das Original bleibt unberührt"
+
+
+def test_umgebungskopf_ist_fuer_sich_lesbar(tmp_path):
+    """Ohne Claude auf dem Zielrechner muss diese eine Datei alles beantworten:
+    welches Python, welches pywin32, welches Outlook, welche Speicher."""
+    from okoa.config import Config
+
+    auftrag = auftrag_modul.Auftrag()
+    auftrag.umgebung_protokollieren(
+        tmp_path, Config(interne_domains=["firma.de"], zeitraum_monate=24))
+    inhalt = (tmp_path / "protokoll.txt").read_text(encoding="utf-8")
+    for pflicht in ("Neuer Lauf", "Programmstand", "Python", "System",
+                    "pywin32", "Outlook", "Einstellung"):
+        assert pflicht in inhalt, f"'{pflicht}' fehlt im Protokollkopf"
+    assert "firma.de" in inhalt and "24 Monate" in inhalt
+
+
+def test_umgebungskopf_ohne_outlook(tmp_path):
+    """Auch ohne Outlook muss der Kopf entstehen -- gerade dann."""
+    auftrag = auftrag_modul.Auftrag()
+    auftrag.umgebung_protokollieren(tmp_path)
+    inhalt = (tmp_path / "protokoll.txt").read_text(encoding="utf-8")
+    assert "nicht erreichbar" in inhalt or "Outlook" in inhalt

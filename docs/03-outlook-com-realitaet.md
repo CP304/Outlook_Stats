@@ -161,6 +161,11 @@ aber nicht leer. Der Report benennt betroffene Ordner.
 Für den Ernstfall gibt es `python -m okoa pruefen` beziehungsweise „Postfach prüfen“ in der
 Oberfläche: Sie listet Speicher, Ordner, Elementzahlen und ob der Zeitfilter greift.
 
+Beides landet zusätzlich in `Auswertung/protokoll.txt`, zusammen mit einem Umgebungskopf
+(Programmstand, Python, pywin32, Outlook-Version, Profil, Speicherliste). Das ist bewusst so
+gebaut, dass die Datei **allein** aussagefähig ist: Auf dem auswertenden Rechner sitzt niemand,
+der nachfragen kann.
+
 ### 11. Performance
 
 - `Items.Restrict("[ReceivedTime] >= '...'")` statt Vollscan; `Items.Sort` vorher setzen

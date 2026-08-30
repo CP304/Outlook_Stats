@@ -291,10 +291,16 @@ def befehl_pruefen(args) -> int:
         for f in fehler:
             print(f"  {f}")
         return 2
+    from .auftrag import Auftrag
+
+    protokoll = Auftrag()
+    protokoll.umgebung_protokollieren(ordner, config)
     try:
         bericht = pruefen(config)
     except OutlookNichtVerfuegbar as fehler:
+        protokoll.protokollieren(ordner, f"FEHLER {fehler}")
         print(f"\n  {fehler}")
+        print(f"\n  Einzelheiten stehen in: {ordner / 'protokoll.txt'}")
         return 3
 
     print(f"\n  Eigene Adressen: "
@@ -311,6 +317,15 @@ def befehl_pruefen(args) -> int:
               f"{eintrag['im_zeitraum']} im Zeitraum{hinweis}")
     print(f"\n  Gesamt: {bericht['elemente_gesamt']} Elemente, "
           f"{bericht['elemente_im_zeitraum']} im Zeitraum")
+    for eintrag in bericht["ordner"]:
+        protokoll.protokollieren(
+            ordner, f"  {eintrag['store']} / {eintrag['ordner']}: "
+                    f"{eintrag['elemente']} Elemente, {eintrag['im_zeitraum']} "
+                    f"im Zeitraum, Filter {eintrag['filter_greift']}")
+    protokoll.protokollieren(
+        ordner, f"Gesamt {bericht['elemente_gesamt']} Elemente, "
+                f"{bericht['elemente_im_zeitraum']} im Zeitraum")
+    print(f"  Mitgeschrieben in: {ordner / 'protokoll.txt'}")
 
     if not bericht["ordner"]:
         print("\n  Es wurde kein einziger Mailordner erkannt. Mögliche Ursachen:")
